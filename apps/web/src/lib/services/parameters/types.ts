@@ -127,6 +127,7 @@ export enum LanguageValue {
 export enum Timezone {
     NEW_YORK = "America/New_York",
     SAO_PAULO = "America/Sao_Paulo",
+    MELBOURNE = "Australia/Melbourne",
 }
 
 export type OrganizationParametersAutoJoinConfig = {
