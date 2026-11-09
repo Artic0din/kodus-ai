@@ -1892,6 +1892,17 @@
     }
   },
   {
+    "key": "team.controller.ts#create",
+    "httpMethod": "POST",
+    "urlPath": "/team",
+    "expected": {
+      "owner": "allow",
+      "billing_manager": "deny",
+      "repo_admin": "deny",
+      "contributor": "deny"
+    }
+  },
+  {
     "key": "teamMembers.controller.ts#createOrUpdateTeamMembers",
     "httpMethod": "POST",
     "urlPath": "/team-members",
