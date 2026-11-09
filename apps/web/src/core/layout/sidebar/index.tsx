@@ -34,10 +34,12 @@ import {
     DropdownMenuLabel,
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@components/ui/dropdown-menu";
 import { SvgKodus } from "@components/ui/icons/SvgKodus";
 import { Link } from "@components/ui/link";
+import { magicModal } from "@components/ui/magic-modal";
 import {
     Popover,
     PopoverContent,
@@ -94,6 +96,7 @@ import {
     hasUnsavedChanges,
     triggerNavigationBlock,
 } from "src/core/utils/navigation-guard";
+import { revalidateServerSideTag } from "src/core/utils/revalidate-server-side";
 import { isEnterprisePlan } from "src/features/ee/byok/_utils";
 import { useFeatureGates } from "src/features/ee/subscription/_hooks/use-feature-gates";
 import { useSubscriptionContext } from "src/features/ee/subscription/_providers/subscription-context";
@@ -104,6 +107,7 @@ import { NotificationBell } from "../navbar/_components/notification-bell";
 import { UserNav } from "../navbar/_components/user-nav";
 import { useMainNavItems } from "../navbar/use-main-nav-items";
 import { SIDEBAR_COLLAPSED_COOKIE } from "./collapsed-cookie";
+import { NewTeamModal } from "./new-team-modal";
 import { SidebarPlanStatus } from "./plan-status";
 import { useScopeTools, type ScopeTarget } from "./scope-tools";
 
@@ -638,6 +642,30 @@ const WorkspaceSwitcher = () => {
     const { teamId, setTeamId } = useSelectedTeamId();
     const current = teams.find((team) => team.uuid === teamId);
     const collapsed = useRail();
+    const router = useRouter();
+    const canCreateTeam = usePermission(
+        Action.Create,
+        ResourceType.OrganizationSettings,
+    );
+
+    const openNewTeamModal = () =>
+        magicModal.show(() => (
+            <NewTeamModal
+                onCreated={(team) => {
+                    // The team list is read on the server, so it must be
+                    // refreshed before the switcher can show the new team.
+                    setTeamId(team.uuid);
+                    revalidateServerSideTag("teams-list")
+                        .then(() => router.refresh())
+                        .catch(() =>
+                            toast({
+                                variant: "danger",
+                                title: "Team created. Reload the page to see it.",
+                            }),
+                        );
+                }}
+            />
+        ));
 
     const changeWorkspace = (nextTeamId: string) => {
         setTeamId(nextTeamId);
@@ -703,6 +731,15 @@ const WorkspaceSwitcher = () => {
                         </DropdownMenuRadioItem>
                     ))}
                 </DropdownMenuRadioGroup>
+                {canCreateTeam && (
+                    <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={openNewTeamModal}>
+                            <PlusIcon className="size-4" />
+                            New team
+                        </DropdownMenuItem>
+                    </>
+                )}
             </DropdownMenuContent>
         </DropdownMenu>
     );

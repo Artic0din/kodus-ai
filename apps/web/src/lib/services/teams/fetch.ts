@@ -22,3 +22,6 @@ export const getTeamsWithIntegrations = async (): Promise<
         return { error: error.response?.status || "Unknown error" };
     }
 };
+
+export const createTeam = (teamName: string) =>
+    axiosAuthorized.post<{ data: Team }>(TEAMS_PATHS.CREATE, { teamName });
