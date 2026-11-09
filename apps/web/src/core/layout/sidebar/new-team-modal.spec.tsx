@@ -19,11 +19,13 @@ jest.mock("@components/ui/magic-modal", () => ({
 
 const created = { uuid: "team-2", name: "Plaintext-Lab", status: "active" };
 
-const submitName = (name: string) => {
+const submitName = async (name: string) => {
     fireEvent.change(screen.getByLabelText("Team name"), {
         target: { value: name },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Create team" }));
+    const button = screen.getByRole("button", { name: "Create team" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
 };
 
 beforeEach(() => {
@@ -32,7 +34,7 @@ beforeEach(() => {
 });
 
 describe("NewTeamModal", () => {
-    it("keeps Create team disabled until a name is typed", () => {
+    it("keeps Create team disabled until a name is typed", async () => {
         render(<NewTeamModal onCreated={jest.fn()} />);
 
         const button = screen.getByRole("button", { name: "Create team" });
@@ -41,7 +43,7 @@ describe("NewTeamModal", () => {
         fireEvent.change(screen.getByLabelText("Team name"), {
             target: { value: "   " },
         });
-        expect(button).toBeDisabled();
+        await waitFor(() => expect(button).toBeDisabled());
     });
 
     it("creates the team with the trimmed name, closes, and reports it", async () => {
@@ -49,7 +51,7 @@ describe("NewTeamModal", () => {
         const onCreated = jest.fn();
         render(<NewTeamModal onCreated={onCreated} />);
 
-        submitName("  Plaintext-Lab  ");
+        await submitName("  Plaintext-Lab  ");
 
         await waitFor(() => expect(onCreated).toHaveBeenCalledWith(created));
         expect(createTeam).toHaveBeenCalledWith("Plaintext-Lab");
@@ -65,7 +67,7 @@ describe("NewTeamModal", () => {
         const onCreated = jest.fn();
         render(<NewTeamModal onCreated={onCreated} />);
 
-        submitName("Plaintext-Lab");
+        await submitName("Plaintext-Lab");
 
         expect(
             await screen.findByText("A team with this name already exists"),
@@ -78,7 +80,7 @@ describe("NewTeamModal", () => {
         createTeam.mockRejectedValue(new Error("network"));
         render(<NewTeamModal onCreated={jest.fn()} />);
 
-        submitName("Plaintext-Lab");
+        await submitName("Plaintext-Lab");
 
         expect(
             await screen.findByText("Could not create the team. Try again."),
