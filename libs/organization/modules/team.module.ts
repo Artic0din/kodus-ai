@@ -7,6 +7,7 @@ import { IntegrationModule } from '@libs/integrations/modules/integrations.modul
 import { IntegrationConfigModule } from '@libs/integrations/modules/config.module';
 
 import { ManageTeamCliKeysUseCase } from '../application/use-cases/team-cli-key/manage.use-case';
+import { AddTeamUseCase } from '../application/use-cases/team/add.use-case';
 import { CreateTeamUseCase } from '../application/use-cases/team/create.use-case';
 import { ListTeamsWithIntegrationsUseCase } from '../application/use-cases/team/list-with-integrations.use-case';
 import { ListTeamsUseCase } from '../application/use-cases/team/list.use-case';
@@ -17,6 +18,8 @@ import { TeamCliKeyModel } from '../infrastructure/adapters/repositories/schemas
 import { IntegrationModel } from '@libs/integrations/infrastructure/adapters/repositories/schemas/integration.model';
 import { OrganizationParametersModule } from './organizationParameters.module';
 import { ParametersModule } from './parameters.module';
+import { TeamMembersCoreModule } from './teamMembers-core.module';
+import { ProfilesModule } from '@libs/identity/modules/profiles.module';
 
 import { TeamService } from '../infrastructure/adapters/services/team.service';
 import { TeamDatabaseRepository } from '../infrastructure/adapters/repositories/team.repository';
@@ -39,6 +42,8 @@ import { CLI_DEVICE_REPOSITORY_TOKEN } from '../domain/cli-device/contracts/cli-
             CliDeviceModel,
         ]),
         forwardRef(() => ProfileConfigModule),
+        forwardRef(() => ProfilesModule),
+        forwardRef(() => TeamMembersCoreModule),
         forwardRef(() => UserModule),
         forwardRef(() => IntegrationModule),
         forwardRef(() => IntegrationConfigModule),
@@ -47,6 +52,7 @@ import { CLI_DEVICE_REPOSITORY_TOKEN } from '../domain/cli-device/contracts/cli-
     ],
     providers: [
         ManageTeamCliKeysUseCase,
+        AddTeamUseCase,
         CreateTeamUseCase,
         ListTeamsUseCase,
         ListTeamsWithIntegrationsUseCase,
@@ -83,6 +89,7 @@ import { CLI_DEVICE_REPOSITORY_TOKEN } from '../domain/cli-device/contracts/cli-
         CLI_DEVICE_SERVICE_TOKEN,
         CLI_DEVICE_REPOSITORY_TOKEN,
         ManageTeamCliKeysUseCase,
+        AddTeamUseCase,
         CreateTeamUseCase,
         ListTeamsUseCase,
         ListTeamsWithIntegrationsUseCase,

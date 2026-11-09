@@ -25,6 +25,11 @@ export class TeamListResponseDto extends ApiResponseBaseDto {
     data: TeamSummaryDto[];
 }
 
+export class TeamResponseDto extends ApiResponseBaseDto {
+    @ApiProperty({ type: TeamSummaryDto })
+    data: TeamSummaryDto;
+}
+
 export class TeamMembersListDto {
     @ApiProperty({
         type: Object,
