@@ -33,6 +33,7 @@ describe('AddTeamUseCase', () => {
         };
         const teamService = {
             update: jest.fn().mockResolvedValue(activeTeam),
+            deleteOne: jest.fn().mockResolvedValue(undefined),
         };
         const teamMembersService = {
             create: jest.fn().mockResolvedValue({ uuid: 'member-1' }),
@@ -114,6 +115,27 @@ describe('AddTeamUseCase', () => {
             ConflictException,
         );
         expect(teamService.update).not.toHaveBeenCalled();
+        expect(teamMembersService.create).not.toHaveBeenCalled();
+    });
+
+    it('removes the new team and fails when the leader membership is not saved', async () => {
+        const { useCase, teamService, teamMembersService } = buildUseCase();
+        const dbError = new Error('insert failed');
+        // The repository returns database errors instead of throwing them.
+        teamMembersService.create.mockResolvedValue(dbError);
+
+        await expect(useCase.execute('Plaintext-Lab')).rejects.toBe(dbError);
+        expect(teamService.deleteOne).toHaveBeenCalledWith('team-2');
+    });
+
+    it('removes the new team and fails when activation fails', async () => {
+        const { useCase, teamService, teamMembersService } = buildUseCase();
+        teamService.update.mockResolvedValue(undefined);
+
+        await expect(useCase.execute('Plaintext-Lab')).rejects.toThrow(
+            'Failed to activate the new team',
+        );
+        expect(teamService.deleteOne).toHaveBeenCalledWith('team-2');
         expect(teamMembersService.create).not.toHaveBeenCalled();
     });
 });

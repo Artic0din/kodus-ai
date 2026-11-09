@@ -76,24 +76,35 @@ export class AddTeamUseCase implements IUseCase {
         // Teams start PENDING and only turn ACTIVE once repositories are saved,
         // but the web switcher disables PENDING teams, so the user could never
         // select this one to connect a Git provider.
-        const activeTeam = await this.teamService.update(
-            { uuid: team.uuid },
-            { status: STATUS.ACTIVE },
-        );
+        try {
+            const activeTeam = await this.teamService.update(
+                { uuid: team.uuid },
+                { status: STATUS.ACTIVE },
+            );
 
-        if (!activeTeam) {
-            throw new Error('Failed to activate the new team');
+            if (!activeTeam) {
+                throw new Error('Failed to activate the new team');
+            }
+
+            // The repository returns database errors instead of throwing.
+            const member: unknown = await this.teamMembersService.create({
+                user,
+                name: profile.name,
+                organization: user.organization,
+                team: activeTeam,
+                teamRole: TeamMemberRole.TEAM_LEADER,
+                status: true,
+            });
+
+            if (member instanceof Error) {
+                throw member;
+            }
+
+            return activeTeam.toJson();
+        } catch (error) {
+            // Soft delete frees the name: the duplicate check ignores REMOVED teams.
+            await this.teamService.deleteOne(team.uuid);
+            throw error;
         }
-
-        await this.teamMembersService.create({
-            user,
-            name: profile.name,
-            organization: user.organization,
-            team: activeTeam,
-            teamRole: TeamMemberRole.TEAM_LEADER,
-            status: true,
-        });
-
-        return activeTeam.toJson();
     }
 }
