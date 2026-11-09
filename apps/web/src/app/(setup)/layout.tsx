@@ -52,8 +52,14 @@ export default async function Layout(props: React.PropsWithChildren) {
         redirect("/confirm-email");
     }
 
-    const candidateTeamId = teams?.find(
+    // Match the (app) layout: it gates on the selected team, so checking any
+    // other team here sends a new, not-yet-onboarded team into a redirect loop.
+    const activeTeams = teams?.filter(
         (t: Team) => t.status === TEAM_STATUS.ACTIVE,
+    );
+    const candidateTeamId = (
+        activeTeams?.find((t: Team) => t.uuid === selectedTeamIdFromCookie) ??
+        activeTeams?.[0]
     )?.uuid;
     if (candidateTeamId) {
         const platformConfigs = await getTeamParametersNoCache<{
