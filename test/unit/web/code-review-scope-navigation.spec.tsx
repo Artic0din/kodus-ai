@@ -64,6 +64,12 @@ jest.mock('@components/ui/magic-modal', () => ({
     magicModal: { show: jest.fn() },
 }));
 jest.mock('@services/permissions/hooks', () => ({ usePermission: () => true }));
+jest.mock('src/core/utils/revalidate-server-side', () => ({
+    revalidateServerSideTag: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('src/core/layout/sidebar/new-team-modal', () => ({
+    NewTeamModal: () => null,
+}));
 jest.mock('src/core/providers/selected-team-context', () => ({
     useSelectedTeamId: () => ({ teamId: 'team-1' }),
 }));
