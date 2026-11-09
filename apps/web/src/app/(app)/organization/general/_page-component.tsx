@@ -31,6 +31,7 @@ import { z } from "zod";
 const timezoneOptions = [
     { value: Timezone.NEW_YORK, title: "New York" },
     { value: Timezone.SAO_PAULO, title: "São Paulo" },
+    { value: Timezone.MELBOURNE, title: "Melbourne" },
 ] satisfies Array<{ value: Timezone; title: string }>;
 
 const createSettingsSchema = (userDomain: string) =>
