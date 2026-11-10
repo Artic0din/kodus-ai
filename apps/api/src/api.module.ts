@@ -74,6 +74,7 @@ import { LicenseController } from './controllers/license.controller';
 import { OrganizationController } from './controllers/organization.controller';
 import { TrialExtensionNotifierService } from './services/trial-extension-notifier.service';
 import { OrganizationParametersController } from './controllers/organizationParameters.controller';
+import { ChatGptPlanController } from './controllers/chatgptPlan.controller';
 import { ParametersController } from './controllers/parameters.controller';
 import { PermissionsController } from './controllers/permissions.controller';
 import {
@@ -181,6 +182,7 @@ import { SelfHostedDoctorModule } from './doctor/self-hosted-doctor.module';
         OrganizationController,
         ParametersController,
         OrganizationParametersController,
+        ChatGptPlanController,
         SkillsController,
         BusinessLogicController,
         CustomAgentsController,
