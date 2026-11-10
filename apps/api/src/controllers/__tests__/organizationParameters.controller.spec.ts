@@ -1,4 +1,6 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+
+import { OrganizationParametersKey } from '@libs/core/domain/enums';
 
 import { OrganizationParametersController } from '../organizationParameters.controller';
 
@@ -67,5 +69,50 @@ describe('OrganizationParametersController.deleteByokConfig — v2 { modelId } r
             BadRequestException,
         );
         expect(deleteByokConfigUseCase.execute).not.toHaveBeenCalled();
+    });
+});
+
+describe('OrganizationParametersController — chatgpt_plan_auth is not a generic parameter', () => {
+    function build() {
+        const createOrUpdate = { execute: jest.fn().mockResolvedValue(true) };
+        const findByKey = { execute: jest.fn().mockResolvedValue(null) };
+        const controller = new (OrganizationParametersController as any)(
+            createOrUpdate,
+            findByKey,
+            ...Array(13).fill(undefined),
+            { user: { organization: { uuid: 'org-1' } } },
+        ) as OrganizationParametersController;
+        return { controller, createOrUpdate, findByKey };
+    }
+
+    it('refuses to write it through create-or-update', async () => {
+        const { controller, createOrUpdate } = build();
+        await expect(
+            controller.createOrUpdate({
+                key: OrganizationParametersKey.CHATGPT_PLAN_AUTH,
+                configValue: { status: 'connected', accessToken: 'attacker-chosen' },
+            }),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        expect(createOrUpdate.execute).not.toHaveBeenCalled();
+    });
+
+    it('still writes an ordinary key', async () => {
+        const { controller, createOrUpdate } = build();
+        await controller.createOrUpdate({
+            key: OrganizationParametersKey.REVIEW_MODE_CONFIG,
+            configValue: {},
+        });
+        expect(createOrUpdate.execute).toHaveBeenCalled();
+    });
+
+    it('returns nothing for it through find-by-key (the use case withholds the row)', async () => {
+        const { controller, findByKey } = build();
+        await expect(
+            controller.findByKey(OrganizationParametersKey.CHATGPT_PLAN_AUTH),
+        ).resolves.toBeNull();
+        expect(findByKey.execute).toHaveBeenCalledWith(
+            OrganizationParametersKey.CHATGPT_PLAN_AUTH,
+            { organizationId: 'org-1' },
+        );
     });
 });

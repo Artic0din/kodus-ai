@@ -22,6 +22,13 @@ import {
     ListModelOverridesUseCase,
     ClearModelOverridesUseCase,
 } from '../application/use-cases/organizationParameters';
+import {
+    ChatGptPlanAuthService,
+} from '../infrastructure/adapters/services/chatgpt-plan-auth.service';
+import {
+    CHATGPT_PLAN_AUTH_STORE,
+    TypeOrmChatGptPlanAuthStore,
+} from '../infrastructure/adapters/services/chatgpt-plan-auth.store';
 import { PlatformModule } from '@libs/platform/modules/platform.module';
 import { CodebaseModule } from '@libs/code-review/modules/codebase.module';
 import { ProviderModule } from '@libs/core/infrastructure/services/providers/provider.module';
@@ -58,6 +65,11 @@ import {
             provide: ORGANIZATION_PARAMETERS_REPOSITORY_TOKEN,
             useClass: OrganizationParametersRepository,
         },
+        {
+            provide: CHATGPT_PLAN_AUTH_STORE,
+            useClass: TypeOrmChatGptPlanAuthStore,
+        },
+        ChatGptPlanAuthService,
         CreateOrUpdateOrganizationParametersUseCase,
         FindByKeyOrganizationParametersUseCase,
         DeleteByokConfigUseCase,
@@ -73,6 +85,7 @@ import {
         ClearModelOverridesUseCase,
     ],
     exports: [
+        ChatGptPlanAuthService,
         ORGANIZATION_PARAMETERS_SERVICE_TOKEN,
         ORGANIZATION_PARAMETERS_REPOSITORY_TOKEN,
         CreateOrUpdateOrganizationParametersUseCase,

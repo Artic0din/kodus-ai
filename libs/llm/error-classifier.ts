@@ -1,5 +1,9 @@
 import { extractProviderMessage } from './review-error-diagnostics';
 import { AgentContextWindowTooSmallError } from './errors';
+import {
+    USAGE_LIMIT_CODE,
+    planRouteCopyFromText,
+} from './providers/chatgpt-plan/route-errors';
 
 /**
  * Canonical categories for LLM/provider errors surfaced when calling a model.
@@ -424,6 +428,9 @@ function looksLikeQuota(lower: string): boolean {
         // wording for the same reason. Its short-window sibling ("Usage limit
         // reached for 5 hour") reopens within hours and stays a rate limit.
         lower.includes('weekly/monthly limit exhausted') ||
+        // The ChatGPT plan route's own code, the backstop for a body whose
+        // status did not survive (the synthetic 402 normally decides it).
+        lower.includes(USAGE_LIMIT_CODE) ||
         lower.includes('failure to pay') ||
         lower.includes('past invoices') ||
         lower.includes('past due')
@@ -573,6 +580,13 @@ function buildFriendlyMessage(
         isRoutingRefusal(providerText)
     ) {
         return `The model is fine, but your provider account${providerLabel} allows no upstream that serves it, so the request has nowhere to route. Allow one of the providers that serves this model, or pick a model your current ones serve.`;
+    }
+
+    // The ChatGPT plan route reports in its own codes (planFetch puts the code in
+    // the error body); the copy follows the code, not the category alone.
+    const routeCopy = planRouteCopyFromText(providerText ?? '');
+    if (routeCopy) {
+        return routeCopy;
     }
 
     switch (category) {

@@ -5,6 +5,7 @@
  */
 export const PROVIDER_LABELS: Record<string, string> = {
     kodus: 'Kodus',
+    chatgpt_plan: 'ChatGPT plan',
     anthropic: 'Anthropic',
     openai: 'OpenAI',
     google_gemini: 'Google',

@@ -25,6 +25,7 @@
  */
 import { z } from 'zod';
 import type { generateText, ModelMessage, Schema } from 'ai';
+import { stampOrganizationId } from '@libs/llm/stamp-organization';
 import type {
     NormalizedModel,
     BYOKConfig,
@@ -179,7 +180,7 @@ export class LLM {
         // fallback in `.fallback` (stamped by resolveTaskSlot), so the cascade is
         // primary → fallback; a slot without a fallback (or the managed default,
         // undefined) makes `runWithModelFailover` a single-attempt pass-through.
-        const slot = resolveSlot(req);
+        const slot = stampOrganizationId(resolveSlot(req), req.organizationId);
         const attempts = [slot, slot?.fallback];
         const failoverOpts = {
             runName: req.runName,

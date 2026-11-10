@@ -1,5 +1,7 @@
 import axios from 'axios';
+import { BadRequestException } from '@nestjs/common';
 import { BYOKProvider } from '@libs/llm/model-providers';
+import { ChatGptPlanTokenError } from '@libs/llm/providers/chatgpt-plan/token-provider';
 
 import { GetModelsByProviderUseCase } from './get-models-by-provider.use-case';
 
@@ -681,5 +683,136 @@ describe('GetModelsByProviderUseCase — a saved credential named by id', () => 
 
         const [, cfg] = mockedAxios.get.mock.calls[0];
         expect(cfg?.headers?.Authorization).toBe('Bearer decrypted:enc-b');
+    });
+});
+
+describe('GetModelsByProviderUseCase — chatgpt_plan', () => {
+    const PLAN_MODELS = {
+        models: [
+            { slug: 'gpt-5.4', display_name: 'GPT-5.4', visibility: 'list' },
+            { slug: 'hidden', display_name: 'Hidden', visibility: 'hide' },
+        ],
+    };
+
+    function build(auth?: { getAccessToken: jest.Mock }, configValue?: unknown) {
+        const providerService = { isProviderSupported: () => true } as any;
+        const orgParamsService = {
+            findByKey: jest.fn().mockResolvedValue(configValue ? { configValue } : null),
+        } as any;
+        return {
+            orgParamsService,
+            useCase: new GetModelsByProviderUseCase(
+                providerService,
+                orgParamsService,
+                undefined,
+                auth as any,
+            ),
+        };
+    }
+    const unauthorized = () =>
+        Object.assign(new Error('Request failed with status code 401'), {
+            isAxiosError: true,
+            response: { status: 401 },
+            config: { headers: { Authorization: 'Bearer SECRET-BEARER' } },
+        });
+
+    beforeEach(() => {
+        mockedAxios.get.mockReset();
+        (mockedAxios.isAxiosError as unknown as jest.Mock) = jest.fn(
+            (e: any) => e?.isAxiosError === true,
+        );
+        mockedAxios.get.mockResolvedValue({ data: PLAN_MODELS } as any);
+    });
+
+    it("lists with the org's access token from the service and parses the plan shape", async () => {
+        const auth = { getAccessToken: jest.fn().mockResolvedValue('plan-access') };
+        const { useCase } = build(auth);
+
+        const res = await useCase.execute('chatgpt_plan', { organizationId: 'org-1' });
+
+        expect(auth.getAccessToken).toHaveBeenCalledWith('org-1', { forceRefresh: false });
+        const [url, cfg] = mockedAxios.get.mock.calls[0];
+        expect(url).toBe('https://api.openai.com/v1/models');
+        expect(cfg?.headers?.Authorization).toBe('Bearer plan-access');
+        expect(res).toMatchObject({ provider: 'chatgpt_plan', exercisedCredential: true });
+        expect(res.models.map((m) => m.id)).toEqual(['gpt-5.4']);
+    });
+
+    it('ignores a typed key, the saved credential and env keys: none is a ChatGPT token', async () => {
+        process.env.API_OPEN_AI_API_KEY = 'sk-env';
+        const auth = { getAccessToken: jest.fn().mockResolvedValue('plan-access') };
+        const { useCase } = build(auth, {
+            version: 2,
+            credentials: [{ id: 'c', provider: 'chatgpt_plan', apiKey: 'enc-saved' }],
+            models: [],
+        });
+
+        await useCase.execute(
+            'chatgpt_plan',
+            { organizationId: 'org-1' },
+            { apiKey: 'sk-typed', baseURL: 'https://evil.example' },
+        );
+
+        const [url, cfg] = mockedAxios.get.mock.calls[0];
+        expect(url).toBe('https://api.openai.com/v1/models');
+        expect(cfg?.headers?.Authorization).toBe('Bearer plan-access');
+        delete process.env.API_OPEN_AI_API_KEY;
+    });
+
+    it('refreshes the token once and retries when the route answers 401', async () => {
+        const auth = {
+            getAccessToken: jest
+                .fn()
+                .mockImplementation(async (_org, { forceRefresh }) =>
+                    forceRefresh ? 'fresh-access' : 'stale-access',
+                ),
+        };
+        mockedAxios.get.mockRejectedValueOnce(unauthorized());
+        const { useCase } = build(auth);
+
+        const res = await useCase.execute('chatgpt_plan', { organizationId: 'org-1' });
+
+        expect(res.models).toHaveLength(1);
+        expect(auth.getAccessToken.mock.calls.map((c) => c[1])).toEqual([
+            { forceRefresh: false },
+            { forceRefresh: true },
+        ]);
+        expect(mockedAxios.get.mock.calls[1][1]?.headers?.Authorization).toBe('Bearer fresh-access');
+    });
+
+    it('gives up after one retry and never echoes the bearer', async () => {
+        const auth = { getAccessToken: jest.fn().mockResolvedValue('SECRET-BEARER') };
+        mockedAxios.get.mockRejectedValue(unauthorized());
+        const { useCase } = build(auth);
+
+        const error = await useCase
+            .execute('chatgpt_plan', { organizationId: 'org-1' })
+            .catch((e) => e);
+
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect(JSON.stringify(error.getResponse())).not.toContain('SECRET-BEARER');
+        expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks for sign-in when the organisation is not connected', async () => {
+        const auth = {
+            getAccessToken: jest
+                .fn()
+                .mockRejectedValue(new ChatGptPlanTokenError('signed_out', 'x')),
+        };
+        const { useCase } = build(auth);
+        await expect(
+            useCase.execute('chatgpt_plan', { organizationId: 'org-1' }),
+        ).rejects.toThrow('Sign in with ChatGPT to load models.');
+        expect(mockedAxios.get).not.toHaveBeenCalled();
+    });
+
+    it('asks for sign-in when there is no organisation or no auth service', async () => {
+        await expect(
+            build({ getAccessToken: jest.fn() }).useCase.execute('chatgpt_plan'),
+        ).rejects.toThrow('Sign in with ChatGPT to load models.');
+        await expect(
+            build(undefined).useCase.execute('chatgpt_plan', { organizationId: 'org-1' }),
+        ).rejects.toThrow('Sign in with ChatGPT to load models.');
     });
 });

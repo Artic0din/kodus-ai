@@ -22,6 +22,7 @@ import { bedrockModule } from '../bedrock/index';
 import { novitaModule } from '../novita/index';
 import { moonshotModule } from '../moonshot/index';
 import { kodusModule } from '../kodus/index';
+import { chatgptPlanModule } from '../chatgpt-plan/index';
 // D-05 registry-wide sweep (03-13): drive each module's real normalize boundary
 // through the 03-01 conformance harness against its committed fixture.
 import { runConformance, type ProviderFixture } from './conformance';
@@ -56,6 +57,7 @@ const ALL_IDS = [
     'azure',
     'zai',
     'kodus',
+    'chatgpt_plan',
 ];
 
 const EFFORTS: ReasoningEffort[] = ['none', 'low', 'medium', 'high'];
@@ -216,17 +218,22 @@ describe('01-02 ported modules — static conformance', () => {
         model: 'fireworks/accounts/fireworks/models/deepseek-v4-flash-0731',
         reasoningModel: 'fireworks/accounts/fireworks/models/deepseek-v4-flash-0731',
     });
+    // chatgpt_plan builds the native OpenAI client; the bearer is per request.
+    runStaticConformance(chatgptPlanModule, {
+        provider: 'chatgpt_plan',
+        model: 'gpt-5.4',
+    });
 });
 
-describe('registry covers all thirteen BYOKProvider ids', () => {
+describe('registry covers all fourteen BYOKProvider ids', () => {
     it('every id resolves to a registered module', () => {
         for (const id of ALL_IDS) {
             expect(REGISTRY.has(id)).toBe(true);
             expect(REGISTRY.get(id)).toBeDefined();
         }
     });
-    it('registers exactly 11 distinct module objects for the 13 ids', () => {
-        expect(REGISTRY.all().length).toBe(11);
+    it('registers exactly 12 distinct module objects for the 14 ids', () => {
+        expect(REGISTRY.all().length).toBe(12);
         expect(new Set(REGISTRY.ids())).toEqual(new Set(ALL_IDS));
     });
 });
@@ -324,6 +331,10 @@ const CONFORMANCE_SAMPLES: Record<
         // dispatches to the native anthropic module offline.
         cfg: { ...sampleConfig('kodus', 'fireworks/accounts/fireworks/models/deepseek-v4-flash-0731'), apiKey: '' },
         fixture: kodusPlainFixture as ProviderFixture,
+    },
+    chatgpt_plan: {
+        cfg: { ...sampleConfig('chatgpt_plan', 'gpt-5.4'), apiKey: '' },
+        fixture: openaiReasoningFixture as ProviderFixture,
     },
 };
 

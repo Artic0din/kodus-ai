@@ -87,6 +87,8 @@ const BUILDABLE: Record<string, { model: string; extra?: Record<string, any> }> 
     // Kodus routes over the upstream modules with a platform key from env (set
     // below); the slot itself carries no key.
     kodus: { model: 'fireworks/accounts/fireworks/models/deepseek-v4-flash-0731', extra: { apiKey: '' } },
+    // Keyless: planFetch supplies the bearer per request, so building needs none.
+    chatgpt_plan: { model: 'gpt-5.4', extra: { apiKey: '' } },
 };
 process.env.API_KODUS_PROVIDER_FIREWORKS_API_KEY = 'placeholder-platform-key';
 process.env.API_KODUS_PROVIDER_OPENAI_API_KEY = 'placeholder-platform-key';

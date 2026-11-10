@@ -458,3 +458,99 @@ describe('LLM.run — loop assembly + guaranteed return shape', () => {
         expect(out).toBe(result);
     });
 });
+
+describe('LLM.run — trusted organizationId stamping', () => {
+    const planSlot = (extra: Partial<NormalizedModel> = {}): NormalizedModel =>
+        ({
+            model: 'plan',
+            byokModelId: 'plan',
+            provider: 'chatgpt_plan',
+            apiKey: '',
+            ...extra,
+        }) as NormalizedModel;
+    const planWithFallback = (): NormalizedModel => ({
+        ...planSlot(),
+        fallback: {
+            ...slotWithFallback.fallback!,
+            provider: 'chatgpt_plan' as NormalizedModel['provider'],
+        },
+    });
+
+    beforeEach(() => {
+        runTextReviewCall.mockReset();
+        runTextReviewCall.mockResolvedValue('ok');
+    });
+
+    it('stamps req.organizationId on a plan primary and a plan fallback', async () => {
+        runTextReviewCall.mockRejectedValueOnce(authErr());
+        await LLM.run({
+            byokConfig: planWithFallback(),
+            user: 'u',
+            runName: 'r',
+            organizationId: 'org-real',
+        });
+
+        const [primary, fallback] = runTextReviewCall.mock.calls.map(
+            (c) => c[0].byokConfig,
+        );
+        expect(primary.organizationId).toBe('org-real');
+        expect(fallback.organizationId).toBe('org-real');
+    });
+
+    it('stamps a plan fallback behind a primary of another provider', async () => {
+        runTextReviewCall.mockRejectedValueOnce(authErr());
+        await LLM.run({
+            byokConfig: {
+                ...bareSlot,
+                fallback: { ...planSlot(), byokModelId: 'plan-fb' },
+            },
+            user: 'u',
+            runName: 'r',
+            organizationId: 'org-real',
+        });
+        const [primary, fallback] = runTextReviewCall.mock.calls.map(
+            (c) => c[0].byokConfig,
+        );
+        expect(primary.organizationId).toBeUndefined();
+        expect(fallback.organizationId).toBe('org-real');
+    });
+
+    it('overwrites an organizationId the slot already carried', async () => {
+        const forged = planSlot({ organizationId: 'org-forged' });
+        await LLM.run({
+            byokConfig: {
+                ...forged,
+                fallback: { ...forged, byokModelId: 'fb' },
+            },
+            user: 'u',
+            runName: 'r',
+            organizationId: 'org-real',
+        });
+        const sent = runTextReviewCall.mock.calls[0][0].byokConfig;
+        expect(sent.organizationId).toBe('org-real');
+        expect(sent.fallback.organizationId).toBe('org-real');
+    });
+
+    it('clears a carried organizationId when the request has none', async () => {
+        await LLM.run({
+            byokConfig: planSlot({ organizationId: 'org-forged' }),
+            user: 'u',
+            runName: 'r',
+        });
+        expect(
+            runTextReviewCall.mock.calls[0][0].byokConfig.organizationId,
+        ).toBeUndefined();
+    });
+
+    it('hands any other provider its slot untouched', async () => {
+        await LLM.run({
+            byokConfig: slotWithFallback,
+            user: 'u',
+            runName: 'r',
+            organizationId: 'org-real',
+        });
+        expect(runTextReviewCall.mock.calls[0][0].byokConfig).toBe(
+            slotWithFallback,
+        );
+    });
+});

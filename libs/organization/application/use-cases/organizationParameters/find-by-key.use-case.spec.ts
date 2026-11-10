@@ -300,3 +300,27 @@ describe('FindByKeyOrganizationParametersUseCase — BYOK masking', () => {
         });
     });
 });
+
+describe('FindByKeyOrganizationParametersUseCase — chatgpt_plan_auth', () => {
+    it('reports nothing for the key and never reads the row', async () => {
+        const organizationParametersService = {
+            findByKey: jest.fn().mockResolvedValue({
+                uuid: 'p',
+                configKey: OrganizationParametersKey.CHATGPT_PLAN_AUTH,
+                configValue: { status: 'connected', accessToken: 'cipher' },
+                organization: { uuid: 'org-1' },
+            }),
+        };
+        const useCase = new FindByKeyOrganizationParametersUseCase(
+            organizationParametersService as any,
+        );
+
+        const result = await useCase.execute(
+            OrganizationParametersKey.CHATGPT_PLAN_AUTH,
+            orgAndTeam,
+        );
+
+        expect(result).toBeNull();
+        expect(organizationParametersService.findByKey).not.toHaveBeenCalled();
+    });
+});

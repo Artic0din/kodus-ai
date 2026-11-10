@@ -838,3 +838,54 @@ describe('REQUEST_REJECTED (#1687)', () => {
         );
     });
 });
+
+describe('ChatGPT plan route codes', () => {
+    const planError = (status: number, code: string) =>
+        new APICallError({
+            message: 'x',
+            url: 'https://api.openai.com/v1/responses',
+            requestBodyValues: {},
+            statusCode: status,
+            responseBody: JSON.stringify({ error: { code, message: 'x' } }),
+        });
+
+    it('backstop: a usage-limit code is quota even when the status did not survive', () => {
+        const err = new Error(
+            'upstream said subscription_sharing_usage_limit_exceeded',
+        );
+        expect(classifyLLMError(err).category).toBe(LlmErrorCategory.QUOTA_EXCEEDED);
+    });
+
+    it('backstop: a 429 carrying the usage-limit code is quota, not a rate limit', () => {
+        const err = planError(429, 'subscription_sharing_usage_limit_exceeded');
+        expect(classifyLLMError(err).category).toBe(LlmErrorCategory.QUOTA_EXCEEDED);
+    });
+
+    it.each([
+        [402, 'subscription_sharing_usage_limit_exceeded', LlmErrorCategory.QUOTA_EXCEEDED, /chatgpt\.com\/settings\/usage/],
+        [401, 'subscription_sharing_invalid_user', LlmErrorCategory.AUTH_INVALID, /sign in again/i],
+        [401, 'chatgpt_plan_signed_out', LlmErrorCategory.AUTH_INVALID, /sign in again/i],
+        [401, 'subscription_sharing_user_not_eligible', LlmErrorCategory.AUTH_INVALID, /not available for this ChatGPT account/],
+        [401, 'chatpass_v2_account_blocked', LlmErrorCategory.AUTH_INVALID, /not available for this ChatGPT account/],
+        [503, 'subscription_sharing_usage_unavailable', LlmErrorCategory.TRANSIENT, /temporarily unavailable/],
+        [502, 'chatgpt_plan_stream_truncated', LlmErrorCategory.TRANSIENT, /ended early/],
+    ])('HTTP %i %s keeps its category and gets the route copy', (status, code, category, copy) => {
+        const classified = classifyLLMError(planError(status, code), 'chatgpt_plan');
+        expect(classified.category).toBe(category);
+        expect(classified.friendlyMessage).toMatch(copy);
+        expect(classified.friendlyMessage).not.toMatch(/API key/);
+    });
+
+    it('a rejected request keeps the provider-message copy and is not failed over', () => {
+        const err = planError(400, 'subscription_sharing_unsupported_capability');
+        const classified = classifyLLMError(err, 'chatgpt_plan');
+        expect(classified.category).toBe(LlmErrorCategory.REQUEST_REJECTED);
+        expect(classified.friendlyMessage).toMatch(/refused the request for this model/);
+        expect(shouldFailoverToNextModel(err)).toBe(false);
+    });
+
+    it('leaves other providers\' errors on their usual copy', () => {
+        const classified = classifyLLMError(errorWithStatus('invalid api key', 401), 'openai');
+        expect(classified.friendlyMessage).toMatch(/API key/);
+    });
+});

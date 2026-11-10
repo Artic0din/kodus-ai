@@ -103,4 +103,17 @@ describe('resolveTaskInvocation — Porta 1 (router + access + usage, composed o
         expect(out.usageIdentity.model).toBe(INVOCATION.modelName);
     });
 
+
+    it('stamps the invocation organisation on a chatgpt_plan slot, before the model is built', () => {
+        const plan = { provider: 'chatgpt_plan', apiKey: '', model: 'gpt-5.4', organizationId: 'org-forged' };
+        resolveTaskSlotMock.mockReturnValue({ slot: plan, verdict: VERDICT });
+
+        const out = resolveTaskInvocation({ version: 2 } as any, 'codeReview', {
+            runName: 'finder',
+            organizationId: 'org-real',
+        });
+
+        expect(out.slot?.organizationId).toBe('org-real');
+        expect(resolveModelConfigMock.mock.calls[0][0].organizationId).toBe('org-real');
+    });
 });

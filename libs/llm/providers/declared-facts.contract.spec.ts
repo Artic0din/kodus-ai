@@ -55,6 +55,7 @@ const PROBE_MODEL: Record<string, string> = {
     zai: 'glm-5.2',
     azure: 'gpt-5.4',
     kodus: 'fireworks/accounts/fireworks/models/deepseek-v4-flash-0731',
+    chatgpt_plan: 'gpt-5.4',
 };
 
 /** Facts a provider may decline — with the reason written down. Empty today. */

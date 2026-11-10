@@ -260,4 +260,14 @@ describe('build() is the authority on strict schema, and it disagrees', () => {
             } as any),
         ).toBe('none');
     });
+
+    it('the ChatGPT plan answers as native OpenAI: the schema rides text.format', () => {
+        expect(
+            resolveStructuredOutputPolicy(REGISTRY.get('chatgpt_plan'), {
+                provider: 'chatgpt_plan',
+                model: 'gpt-5.4',
+                apiKey: '',
+            } as any),
+        ).toBe('json_schema');
+    });
 });
