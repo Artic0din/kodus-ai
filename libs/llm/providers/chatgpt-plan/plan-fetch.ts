@@ -286,7 +286,8 @@ async function foldStream(
                 case 'response.output_item.done':
                     if (event.item) items.push(event.item);
                     break;
-                case 'response.completed': {
+                case 'response.completed':
+                case 'response.incomplete': {
                     const response: Json = event.response ?? {};
                     if (
                         !Array.isArray(response.output) ||
@@ -296,8 +297,6 @@ async function foldStream(
                     }
                     return jsonResponse(response, requestId);
                 }
-                case 'response.incomplete':
-                    return jsonResponse(event.response ?? {}, requestId);
                 case 'response.failed':
                     return fail(
                         event.response?.error?.code,

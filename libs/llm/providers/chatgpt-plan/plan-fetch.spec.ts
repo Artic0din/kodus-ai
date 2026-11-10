@@ -224,6 +224,15 @@ describe('planFetch stream folding', () => {
         expect(result.finishReason).toBe('length');
     });
 
+    it('rebuilds an empty incomplete output so partial text survives', async () => {
+        const server = new FakePlanServer().always(() =>
+            incompleteStream('partial', { emptyOutput: true }),
+        );
+        const result = await call(model(server));
+        expect(result.text).toBe('partial');
+        expect(result.finishReason).toBe('length');
+    });
+
     it('answers a stream that ends with no terminal event as a retry-worthy 502', async () => {
         const server = new FakePlanServer().always(() => truncatedStream());
         const error = await failure(call(model(server)));

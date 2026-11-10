@@ -128,13 +128,16 @@ export function emptyOutputStream(
     );
 }
 
-export function incompleteStream(text: string): Response {
+export function incompleteStream(
+    text: string,
+    { emptyOutput = false }: { emptyOutput?: boolean } = {},
+): Response {
     const item = messageItem(text);
     return sse([
         { type: 'response.output_item.done', output_index: 0, item },
         {
             type: 'response.incomplete',
-            response: responseObject([item], {
+            response: responseObject(emptyOutput ? [] : [item], {
                 status: 'incomplete',
                 incomplete_details: { reason: 'max_output_tokens' },
             }),
