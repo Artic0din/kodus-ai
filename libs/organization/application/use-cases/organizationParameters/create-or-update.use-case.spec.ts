@@ -1160,3 +1160,59 @@ describe('platform-funded (`kodus`) credential — keyless by design, cloud-only
         ).rejects.toThrow(BadRequestException);
     });
 });
+
+describe('ChatGPT plan (`chatgpt_plan`) credential — keyless, tokens live elsewhere', () => {
+    afterEach(() => {
+        (environment as { API_CLOUD_MODE: boolean }).API_CLOUD_MODE = true;
+    });
+
+    const planConfig = (cred: Record<string, unknown> = {}): BYOKConfig => ({
+        version: 2,
+        credentials: [
+            { id: 'cred-plan', provider: BYOKProvider.CHATGPT_PLAN, ...cred },
+        ],
+        models: [{ id: 'model-p', credentialId: 'cred-plan', model: 'gpt-5.4' }],
+        routing: { defaultModelId: 'model-p' },
+    });
+
+    it('saves with no apiKey and stores exactly { id, provider }', async () => {
+        const { useCase, persisted } = buildUseCase();
+        await saveByok(useCase, planConfig());
+        expect(persisted.value.credentials).toEqual([
+            { id: 'cred-plan', provider: 'chatgpt_plan' },
+        ]);
+    });
+
+    it('drops a client-sent key, settings and managed flag instead of storing them', async () => {
+        const { useCase, persisted } = buildUseCase();
+        await saveByok(
+            useCase,
+            planConfig({
+                apiKey: 'sk-sent-by-client',
+                settings: { organizationId: 'org-victim', awsBearerToken: 'plaintext-aws' },
+            }),
+        );
+        expect(persisted.value.credentials).toEqual([
+            { id: 'cred-plan', provider: 'chatgpt_plan' },
+        ]);
+        expect(JSON.stringify(persisted.value)).not.toMatch(/sk-sent-by-client|org-victim|plaintext-aws/);
+    });
+
+    it('saves on a self-hosted install: the plan is for self-hosted use', async () => {
+        (environment as { API_CLOUD_MODE: boolean }).API_CLOUD_MODE = false;
+        const { useCase, createOrUpdateConfig } = buildUseCase();
+        await saveByok(useCase, planConfig());
+        expect(createOrUpdateConfig).toHaveBeenCalled();
+    });
+
+    it('a BYOK save never reads or writes the chatgpt_plan_auth row, so tokens are untouched', async () => {
+        const { useCase, createOrUpdateConfig, organizationParametersService } = buildUseCase();
+        await saveByok(useCase, planConfig());
+        const keys = [
+            ...createOrUpdateConfig.mock.calls.map((c) => c[0]),
+            ...organizationParametersService.findByKey.mock.calls.map((c) => c[0]),
+        ];
+        expect(keys).not.toContain(OrganizationParametersKey.CHATGPT_PLAN_AUTH);
+        expect(keys).toContain(OrganizationParametersKey.BYOK_CONFIG);
+    });
+});

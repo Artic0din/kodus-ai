@@ -33,6 +33,7 @@ import { moonshotModule } from '../moonshot/index';
 import { azureModule } from '../azure/index';
 import { zaiModule } from '../zai/index';
 import { kodusModule } from '../kodus';
+import { chatgptPlanModule } from '../chatgpt-plan';
 
 import openaiPlain from '../openai/__fixtures__/plain.json';
 import openaiReasoning from '../openai/__fixtures__/reasoning.json';
@@ -135,6 +136,16 @@ const CASES: ProviderCase[] = [
                 name: 'reasoning',
                 fixture: anthropicReasoning as ProviderFixture,
             },
+        ],
+    },
+    {
+        // The plan is the native OpenAI Responses client behind another
+        // transport, so it shares the OpenAI usage fixtures.
+        module: chatgptPlanModule,
+        model: 'gpt-5.4',
+        fixtures: [
+            { name: 'plain', fixture: openaiPlain as ProviderFixture },
+            { name: 'reasoning', fixture: openaiReasoning as ProviderFixture },
         ],
     },
 ];
