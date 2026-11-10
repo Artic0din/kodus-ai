@@ -20,6 +20,18 @@ export const ORGANIZATION_PARAMETERS_PATHS = {
     GET_LLM_CONFIG_STATUS: pathToApiUrl(
         "/organization-parameters/llm-config/status",
     ),
+    CHATGPT_PLAN_STATUS: pathToApiUrl(
+        "/organization-parameters/chatgpt-plan/status",
+    ),
+    CHATGPT_PLAN_SIGN_IN_START: pathToApiUrl(
+        "/organization-parameters/chatgpt-plan/sign-in/start",
+    ),
+    CHATGPT_PLAN_SIGN_IN_COMPLETE: pathToApiUrl(
+        "/organization-parameters/chatgpt-plan/sign-in/complete",
+    ),
+    CHATGPT_PLAN_SIGN_OUT: pathToApiUrl(
+        "/organization-parameters/chatgpt-plan/sign-out",
+    ),
     GET_BYOK_PROVIDERS: pathToApiUrl("/organization-parameters/byok/providers"),
     GET_COCKPIT_METRICS_VISIBILITY: pathToApiUrl(
         "/organization-parameters/cockpit-metrics-visibility",

@@ -8,6 +8,7 @@ import type { ByokModelCost } from "@services/usage/byok-cost";
 import { PlusIcon } from "lucide-react";
 import { revalidateServerSidePath } from "src/core/utils/revalidate-server-side";
 
+import { isChatGptPlanProvider } from "../../_data/chatgpt-plan";
 import { isPlatformFundedProvider } from "../../_data/platform-funded";
 import type { BYOKConfig, BYOKCredential, BYOKModelConfig } from "../../_types";
 import { groupModelsByProvider, hasVisibleModels } from "../../_utils";
@@ -142,7 +143,11 @@ export const ModelsTab = ({
                     defaultOpen={groups.length <= 1 || models.length <= 3}
                     onRotate={() =>
                         router.push(
-                            `/byok/provider?credentialId=${encodeURIComponent(credential.id)}`,
+                            // The ChatGPT plan has no key to rotate: its account
+                            // is managed on the model form.
+                            isChatGptPlanProvider(credential.provider)
+                                ? `/byok/manual?provider=${encodeURIComponent(credential.provider)}`
+                                : `/byok/provider?credentialId=${encodeURIComponent(credential.id)}`,
                         )
                     }>
                     <div className="flex flex-col gap-3 pt-1">

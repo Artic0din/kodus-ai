@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "src/core/utils/components";
 
+import { isChatGptPlanProvider } from "../_data/chatgpt-plan";
 import { isPlatformFundedProvider } from "../_data/platform-funded";
 import { PROVIDER_LABELS } from "../_data/provider-labels";
 import { ProviderLogo } from "./provider-logo";
@@ -101,6 +102,8 @@ function ProviderGridCard({
     // Kodus routes with its own upstream keys and bills the org's credits —
     // the one card where "no key" is the feature, so say it on the tile.
     const platformFunded = isPlatformFundedProvider(provider.id);
+    // The ChatGPT plan is the other keyless card: you sign in instead.
+    const chatGptPlan = isChatGptPlanProvider(provider.id);
     return (
         <button
             type="button"
@@ -136,6 +139,11 @@ function ProviderGridCard({
                     <span className="text-primary-light flex items-center gap-1 text-xs">
                         <SparklesIcon size={10} className="shrink-0" />
                         No API key · pay with credits
+                    </span>
+                ) : chatGptPlan ? (
+                    <span className="text-primary-light flex items-center gap-1 text-xs">
+                        <SparklesIcon size={10} className="shrink-0" />
+                        No API key · sign in with ChatGPT
                     </span>
                 ) : (
                     needsEndpoint && (

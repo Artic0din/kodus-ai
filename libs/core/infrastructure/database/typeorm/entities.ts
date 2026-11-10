@@ -22,6 +22,8 @@ import { GlobalParametersModel } from '../../../../organization/infrastructure/a
 import { OrganizationModel } from '../../../../organization/infrastructure/adapters/repositories/schemas/organization.model';
 import { OrganizationParametersModel } from '../../../../organization/infrastructure/adapters/repositories/schemas/organizationParameters.model';
 import { ParametersModel } from '../../../../organization/infrastructure/adapters/repositories/schemas/parameters.model';
+import { ChatGptPlanInstallModel } from '../../../../organization/infrastructure/adapters/repositories/schemas/chatgpt-plan-install.model';
+import { ChatGptPlanSignInAttemptModel } from '../../../../organization/infrastructure/adapters/repositories/schemas/chatgpt-plan-sign-in-attempt.model';
 import { TeamCliKeyModel } from '../../../../organization/infrastructure/adapters/repositories/schemas/team-cli-key.model';
 import { CliDeviceModel } from '../../../../organization/infrastructure/adapters/repositories/schemas/cli-device.model';
 import { TeamModel } from '../../../../organization/infrastructure/adapters/repositories/schemas/team.model';
@@ -73,6 +75,8 @@ export const ENTITIES = [
     CodeReviewExecutionModel,
     InteractionModel,
     CliDeviceModel,
+    ChatGptPlanInstallModel,
+    ChatGptPlanSignInAttemptModel,
     SessionEventModel,
     RepositoryModel,
     AstNodeModel,

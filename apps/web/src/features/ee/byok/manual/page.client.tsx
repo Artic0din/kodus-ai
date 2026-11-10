@@ -68,6 +68,7 @@ import {
 } from "../_components/byok-write";
 import { credentialSettingsOverride } from "../_components/credential-settings-override";
 import { SuccessClaim } from "../_components/success-claim";
+import { isChatGptPlanProvider } from "../_data/chatgpt-plan";
 import { formatModelLabel } from "../_data/model-label";
 import { AiProvidersPageSkeleton } from "@components/system/page-skeletons";
 
@@ -446,7 +447,14 @@ export function ByokManualPageClient({
         normalizeEndpoint(watchedBaseURL) !== normalizeEndpoint(currentBaseURL);
     // The stored key is the one in play: the key field is hidden, so anything
     // typed into it earlier (for another endpoint) must not be used.
-    const usingStoredKey = keyIsStored && !endpointChanged && !showKeyInput;
+    // The ChatGPT plan is never "a stored key": its credential row survives a
+    // sign-out, so the form always renders and Test & save always probes the
+    // live connection.
+    const usingStoredKey =
+        keyIsStored &&
+        !endpointChanged &&
+        !showKeyInput &&
+        !isChatGptPlanProvider(provider);
 
     // Models already enabled on this credential — hidden from the "Add model"
     // dropdown so it never offers a duplicate. Another gateway of the same
@@ -832,12 +840,16 @@ export function ByokManualPageClient({
                     </div>
                     <Page.Description className="text-pretty">
                         {isEditing
-                            ? "Update this model's endpoint or tuning. Leave the key blank to keep the stored one."
+                            ? isChatGptPlanProvider(lockedProvider)
+                                ? "Update this model's tuning, or change the ChatGPT account it runs on."
+                                : "Update this model's endpoint or tuning. Leave the key blank to keep the stored one."
                             : isPlatformFundedProvider(lockedProvider)
                               ? "Pick a model. Usage is billed to your Kodus credits at the provider's list price — no API key needed."
-                              : lockedProviderLabel
-                                ? `Type the model ID to enable${keyIsStored ? " — your key is already stored." : "."}`
-                                : "Pick any provider and model. Use this if your model isn't in the recommended list, or if you need a custom endpoint."}
+                              : isChatGptPlanProvider(lockedProvider)
+                                ? "Sign in with ChatGPT, then pick a model. Usage counts against your ChatGPT plan."
+                                : lockedProviderLabel
+                                  ? `Type the model ID to enable${keyIsStored ? " — your key is already stored." : "."}`
+                                  : "Pick any provider and model. Use this if your model isn't in the recommended list, or if you need a custom endpoint."}
                     </Page.Description>
                 </Page.TitleContainer>
             </Page.Header>
@@ -904,7 +916,9 @@ export function ByokManualPageClient({
                             <Card color="lv1">
                                 <CardHeader>
                                     <h3 className="text-text-primary text-sm font-semibold text-balance">
-                                        API key
+                                        {isChatGptPlanProvider(provider)
+                                            ? "ChatGPT account"
+                                            : "API key"}
                                     </h3>
                                 </CardHeader>
                                 <CardContent className="flex flex-col gap-4">
@@ -1091,7 +1105,7 @@ export function ByokManualPageClient({
                         </Card>
                     )}
 
-                    <TestResultBanner state={testState} />
+                    <TestResultBanner state={testState} provider={provider} />
 
                     <div
                         className="flex flex-wrap items-center justify-end gap-2"
@@ -1158,7 +1172,9 @@ function ModelManualFallback({ onRetry }: { onRetry: () => void }) {
 
 function TestResultBanner({
     state,
+    provider,
 }: {
+    provider?: string;
     state:
         | { status: "idle" }
         | { status: "testing" }
@@ -1210,13 +1226,17 @@ function TestResultBanner({
     const headline = (() => {
         switch (result.code) {
             case "auth":
-                return "Invalid API key";
+                return isChatGptPlanProvider(provider)
+                    ? "ChatGPT sign-in needed"
+                    : "Invalid API key";
             case "not_found":
                 return "Endpoint not found";
             case "bad_request":
                 return "Request rejected by provider";
             case "payment":
-                return "Insufficient balance or inactive billing";
+                return isChatGptPlanProvider(provider)
+                    ? "ChatGPT usage limit reached"
+                    : "Insufficient balance or inactive billing";
             case "rate_limit":
                 return "Rate limited";
             case "server_error":

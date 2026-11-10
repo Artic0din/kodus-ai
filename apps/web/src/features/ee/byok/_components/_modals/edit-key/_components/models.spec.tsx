@@ -10,6 +10,7 @@ import { ByokModelSelect } from "./models";
 // amazon_bedrock is included alongside it so the same suite can regression-test
 // the Bedrock-specific credential gate without affecting apiKey-based providers.
 const mockPreview = jest.fn();
+const mockPlanStatus = jest.fn();
 jest.mock("@services/organizationParameters/hooks", () => ({
     useSuspenseGetLLMProviders: () => ({
         providers: [
@@ -26,6 +27,13 @@ jest.mock("@services/organizationParameters/hooks", () => ({
                 requiresBaseUrl: false,
             },
             {
+                // Keyless: lists models once the org is signed in.
+                id: "chatgpt_plan",
+                autoListModels: false,
+                listsModelsLive: true,
+                requiresBaseUrl: false,
+            },
+            {
                 // A custom endpoint: nothing to list before its base URL is
                 // known, then the same live listing as any http provider.
                 id: "openai_compatible",
@@ -36,6 +44,9 @@ jest.mock("@services/organizationParameters/hooks", () => ({
         ],
     }),
     useLLMProviderModelsPreview: (...args: unknown[]) => mockPreview(...args),
+}));
+jest.mock("@services/organizationParameters/chatgpt-plan", () => ({
+    useChatGptPlanStatus: (...args: unknown[]) => mockPlanStatus(...args),
 }));
 
 function Harness({ lockedInUse }: { lockedInUse: boolean }) {
@@ -70,6 +81,8 @@ function LivePickerHarness({
 }
 
 beforeEach(() => {
+    mockPlanStatus.mockReset();
+    mockPlanStatus.mockReturnValue({ data: undefined });
     mockPreview.mockReset();
     mockPreview.mockReturnValue({ data: [], isFetching: false, isError: false });
 });
@@ -339,5 +352,70 @@ describe("ByokModelSelect — custom endpoint (openai_compatible)", () => {
         expect(
             screen.queryByPlaceholderText(/type a model name/i),
         ).not.toBeInTheDocument();
+    });
+});
+
+// The ChatGPT plan has no key. Listing needs the org to be signed in, and a
+// saved credential row proves nothing: it survives a sign-out.
+describe("ByokModelSelect — ChatGPT plan lists models only while signed in", () => {
+    const plan = { provider: "chatgpt_plan", model: "" };
+
+    it("not connected: prompts to sign in, does not ask for a key, does not list", () => {
+        mockPlanStatus.mockReturnValue({ data: { status: "not_connected" } });
+        render(<LivePickerHarness defaultValues={plan} />);
+
+        expect(
+            screen.getByText(/sign in with chatgpt to load models/i),
+        ).toBeInTheDocument();
+        expect(
+            screen.queryByText(/enter your api key/i),
+        ).not.toBeInTheDocument();
+        expect(mockPreview).toHaveBeenCalledWith(
+            expect.objectContaining({
+                provider: "chatgpt_plan",
+                enabled: false,
+            }),
+        );
+    });
+
+    it("signed out with a saved credential: still prompts to sign in", () => {
+        mockPlanStatus.mockReturnValue({
+            data: { status: "reauth_required", email: "owner@example.com" },
+        });
+        render(<LivePickerHarness defaultValues={plan} credentialStored />);
+
+        expect(
+            screen.getByText(/sign in with chatgpt to load models/i),
+        ).toBeInTheDocument();
+        expect(mockPreview).toHaveBeenCalledWith(
+            expect.objectContaining({ enabled: false }),
+        );
+    });
+
+    it("connected: lists live with no key", () => {
+        mockPlanStatus.mockReturnValue({
+            data: { status: "connected", email: "owner@example.com" },
+        });
+        render(<LivePickerHarness defaultValues={plan} />);
+
+        expect(
+            screen.queryByText(/sign in with chatgpt to load models/i),
+        ).not.toBeInTheDocument();
+        expect(mockPreview).toHaveBeenCalledWith(
+            expect.objectContaining({
+                provider: "chatgpt_plan",
+                apiKey: undefined,
+                enabled: true,
+            }),
+        );
+    });
+
+    it("only asks for the connection when the provider is the ChatGPT plan", () => {
+        render(
+            <LivePickerHarness
+                defaultValues={{ provider: "novita", model: "", apiKey: "sk" }}
+            />,
+        );
+        expect(mockPlanStatus).toHaveBeenCalledWith(false);
     });
 });
