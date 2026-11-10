@@ -2,6 +2,7 @@ import type { z } from "zod";
 
 import {
     PROVIDER_SETTING_KEYS,
+    providerHasCredentials,
     providerOwnsField,
     refineProviderCredentials,
 } from "./credential-config";
@@ -81,5 +82,35 @@ describe("credential-config — provider-owned web credential wiring", () => {
             refineProviderCredentials(data({ provider: "amazon_bedrock" }), ctx);
             expect(issues[0]?.path[0]).toBe("awsBearerToken");
         });
+    });
+});
+
+describe("credential-config — ChatGPT plan carries no key", () => {
+    it("has enough credentials to Test & save with an empty form", () => {
+        expect(
+            providerHasCredentials({ provider: "chatgpt_plan", apiKey: "" }),
+        ).toBe(true);
+        // Unchanged for key providers: an empty key is still not enough.
+        expect(providerHasCredentials({ provider: "openai", apiKey: "" })).toBe(
+            false,
+        );
+    });
+
+    it("never fails create-time validation for a missing key", () => {
+        const { ctx, issues } = makeCtx();
+        expect(
+            refineProviderCredentials(
+                data({ provider: "chatgpt_plan", apiKey: "" }),
+                ctx,
+            ),
+        ).toBe(true);
+        expect(issues).toEqual([]);
+    });
+
+    it("owns no credential settings, so none leak into its credential", () => {
+        expect(
+            Object.keys(PROVIDER_SETTING_KEYS).includes("chatgpt_plan"),
+        ).toBe(false);
+        expect(providerOwnsField("chatgpt_plan", "awsRegion")).toBe(false);
     });
 });
