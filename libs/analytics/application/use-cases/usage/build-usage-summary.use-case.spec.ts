@@ -136,6 +136,16 @@ describe('BuildUsageSummaryUseCase.execute (enrich)', () => {
 
 describe('BuildUsageSummaryUseCase.executeOverview cache lifetime', () => {
     const DAY_MS = 24 * 60 * 60 * 1000;
+    // Midday UTC, so the "includes today" classification cannot flip mid-test.
+    const NOW = new Date('2026-11-10T12:00:00.000Z');
+
+    beforeEach(() => {
+        jest.useFakeTimers({ now: NOW });
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
 
     const runOverview = async (end: Date) => {
         const cacheService = {
@@ -162,11 +172,11 @@ describe('BuildUsageSummaryUseCase.executeOverview cache lifetime', () => {
     };
 
     it('refreshes a window that includes today within 5 minutes', async () => {
-        expect(await runOverview(new Date())).toBe(5 * 60 * 1000);
+        expect(await runOverview(NOW)).toBe(5 * 60 * 1000);
     });
 
     it('keeps a window that ended before today for 4 hours', async () => {
-        expect(await runOverview(new Date(Date.now() - 3 * DAY_MS))).toBe(
+        expect(await runOverview(new Date(NOW.getTime() - 3 * DAY_MS))).toBe(
             4 * 60 * 60 * 1000,
         );
     });
