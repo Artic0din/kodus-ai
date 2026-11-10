@@ -133,3 +133,51 @@ describe('BuildUsageSummaryUseCase.execute (enrich)', () => {
         expect(row.cost.input).toBeCloseTo(1.7, 10);
     });
 });
+
+describe('BuildUsageSummaryUseCase.executeOverview cache lifetime', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    // Midday UTC, so the "includes today" classification cannot flip mid-test.
+    const NOW = new Date('2026-11-10T12:00:00.000Z');
+
+    beforeEach(() => {
+        jest.useFakeTimers({ now: NOW });
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    const runOverview = async (end: Date) => {
+        const cacheService = {
+            getFromCache: jest.fn().mockResolvedValue(null),
+            addToCache: jest.fn(),
+        };
+        const useCase = new BuildUsageSummaryUseCase(
+            {} as any,
+            {} as any,
+            cacheService as any,
+        );
+        jest.spyOn(useCase as any, 'buildOverview').mockResolvedValue({
+            byTaskModelSpan: [],
+        });
+
+        await useCase.executeOverview({
+            organizationId: 'org-1',
+            start: new Date(end.getTime() - 14 * DAY_MS),
+            end,
+            byok: true,
+        } as any);
+
+        return cacheService.addToCache.mock.calls[0][2];
+    };
+
+    it('refreshes a window that includes today within 5 minutes', async () => {
+        expect(await runOverview(NOW)).toBe(5 * 60 * 1000);
+    });
+
+    it('keeps a window that ended before today for 4 hours', async () => {
+        expect(await runOverview(new Date(NOW.getTime() - 3 * DAY_MS))).toBe(
+            4 * 60 * 60 * 1000,
+        );
+    });
+});

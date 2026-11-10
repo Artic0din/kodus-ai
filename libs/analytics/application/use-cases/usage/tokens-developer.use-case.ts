@@ -20,9 +20,10 @@ import { CacheService } from '@libs/core/cache/cache.service';
 
 // Same immutability logic as the overview cache: a window that ends before
 // today never changes → cache long; a window that includes today still grows.
-// Both windows cached 4h (see build-usage-summary.use-case for the rationale).
+// Lifetimes match the overview cache (see build-usage-summary.use-case), so the
+// by-developer view refreshes alongside the cards.
 const DEV_TTL_PAST_MS = 4 * 60 * 60 * 1000;
-const DEV_TTL_CURRENT_MS = 4 * 60 * 60 * 1000;
+const DEV_TTL_CURRENT_MS = 5 * 60 * 1000;
 
 /** Epoch ms for 00:00 UTC today — the cutoff for "immutable past window". */
 function startOfTodayUtc(): number {
