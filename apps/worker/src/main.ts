@@ -18,6 +18,8 @@ import { NestFactory } from '@nestjs/core';
 
 import { LoggerWrapperService } from '@libs/core/log/loggerWrapper.service';
 import { ObservabilityService } from '@libs/core/log/observability.service';
+import { setChatGptPlanTokenProvider } from '@libs/llm/providers/chatgpt-plan/token-provider';
+import { ChatGptPlanAuthService } from '@libs/organization/infrastructure/adapters/services/chatgpt-plan-auth.service';
 
 import { resolveWorkerRole } from './worker-role';
 import { WorkerModule } from './worker.module';
@@ -94,6 +96,13 @@ async function bootstrap() {
         });
 
         await appContext.get(ObservabilityService).init('worker');
+        // Only the code-review role runs reviews; the analytics role does not
+        // load the organization module.
+        if (role === 'code-review') {
+            setChatGptPlanTokenProvider(
+                appContext.get(ChatGptPlanAuthService, { strict: false }),
+            );
+        }
 
         appContext.enableShutdownHooks();
 

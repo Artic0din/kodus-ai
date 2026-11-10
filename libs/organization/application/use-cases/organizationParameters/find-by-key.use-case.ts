@@ -31,6 +31,14 @@ export class FindByKeyOrganizationParametersUseCase implements IUseCase {
         organizationParametersKey: OrganizationParametersKey,
         organizationAndTeamData: OrganizationAndTeamData,
     ): Promise<IOrganizationParameters | null> {
+        // The org's ChatGPT tokens are read only by ChatGptPlanAuthService; this
+        // is the generic read, so it reports nothing for the key.
+        if (
+            organizationParametersKey ===
+            OrganizationParametersKey.CHATGPT_PLAN_AUTH
+        ) {
+            return null;
+        }
         try {
             const parameter =
                 await this.organizationParametersService.findByKey(

@@ -94,6 +94,8 @@ const SENSITIVE_ORG_PARAM_KEYS = new Set<OrganizationParametersKey>([
     OrganizationParametersKey.LICENSE_ASSIGNED_USERS,
     OrganizationParametersKey.SPEND_LIMIT_CONFIG,
     OrganizationParametersKey.FIRST_REVIEW_AT,
+    // Holds the org's ChatGPT tokens; only ChatGptPlanAuthService touches it.
+    OrganizationParametersKey.CHATGPT_PLAN_AUTH,
 ]);
 
 // NOTE: class decorators must sit immediately above the class — a statement

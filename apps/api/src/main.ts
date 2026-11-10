@@ -60,6 +60,8 @@ import * as volleyball from 'volleyball';
 
 import { HttpServerConfiguration } from '@libs/core/infrastructure/config/types';
 import { ObservabilityService } from '@libs/core/log/observability.service';
+import { setChatGptPlanTokenProvider } from '@libs/llm/providers/chatgpt-plan/token-provider';
+import { ChatGptPlanAuthService } from '@libs/organization/infrastructure/adapters/services/chatgpt-plan-auth.service';
 
 import { ApiModule } from './api.module';
 import { BILLING_EVENTS_PATH } from './controllers/billingEvents.controller';
@@ -106,6 +108,7 @@ async function bootstrap() {
 
         const configService: ConfigService = app.get(ConfigService);
         await app.get(ObservabilityService).init('api');
+        setChatGptPlanTokenProvider(app.get(ChatGptPlanAuthService));
 
         const config = configService.get<HttpServerConfiguration>('server');
         const { host, port, rateLimit } = config;

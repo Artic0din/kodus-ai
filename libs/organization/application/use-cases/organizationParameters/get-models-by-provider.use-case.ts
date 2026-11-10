@@ -1,6 +1,10 @@
 import { BYOKProvider } from '@libs/llm/model-providers';
 import { REGISTRY } from '@libs/llm/providers';
-import type { CatalogModel } from '@libs/llm/providers/kernel/types';
+import { ChatGptPlanTokenError } from '@libs/llm/providers/chatgpt-plan/token-provider';
+import type {
+    CatalogModel,
+    ModelListing,
+} from '@libs/llm/providers/kernel/types';
 import { OrganizationAndTeamData } from '@libs/core/infrastructure/config/types/general/organizationAndTeamData';
 import { ProviderService } from '@libs/core/infrastructure/services/providers/provider.service';
 import { createLogger } from '@libs/core/log/logger';
@@ -16,6 +20,8 @@ import {
 } from '@libs/organization/domain/organizationParameters/contracts/organizationParameters.service.contract';
 import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
 import axios from 'axios';
+
+import { ChatGptPlanAuthService } from '@libs/organization/infrastructure/adapters/services/chatgpt-plan-auth.service';
 
 import { resolveByokSlot } from './byok-credentials.util';
 import { assertSafeOpenAICompatibleUrl } from './test-byok-connection.use-case';
@@ -55,6 +61,8 @@ export class GetModelsByProviderUseCase {
         @Optional()
         @Inject(KODUS_PROVIDER_GATE_TOKEN)
         private readonly kodusGate?: KodusProviderGate,
+        @Optional()
+        private readonly chatGptPlanAuth?: ChatGptPlanAuthService,
     ) {}
 
     async execute(
@@ -155,6 +163,15 @@ export class GetModelsByProviderUseCase {
                 models: listing.models,
                 exercisedCredential: false,
             };
+        }
+
+        // The plan lists with the org's ChatGPT bearer. A typed key, the saved
+        // credential and the env keys have no say: none of them is a ChatGPT token.
+        if (byokProvider === BYOKProvider.CHATGPT_PLAN) {
+            return this.listChatGptPlanModels(
+                listing,
+                organizationAndTeamData?.organizationId,
+            );
         }
 
         // Prefer the org's OWN saved BYOK credentials so the catalog reflects the
@@ -331,6 +348,66 @@ export class GetModelsByProviderUseCase {
             });
             throw new BadRequestException(
                 `Error fetching ${provider} models: ${(error as Error).message}`,
+            );
+        }
+    }
+
+    /** Live-list the plan's models with the org's access token, refreshing it
+     *  once if the route answers 401. */
+    private async listChatGptPlanModels(
+        listing: Extract<ModelListing, { kind: 'http' }>,
+        organizationId: string | undefined,
+    ): Promise<ModelResponse> {
+        if (!organizationId || !this.chatGptPlanAuth) {
+            throw new BadRequestException(
+                'Sign in with ChatGPT to load models.',
+            );
+        }
+        const auth = this.chatGptPlanAuth;
+        const fetchModels = async (forceRefresh: boolean) =>
+            axios.get(listing.url({}), {
+                headers: listing.headers({
+                    apiKey: await auth.getAccessToken(organizationId, {
+                        forceRefresh,
+                    }),
+                }),
+                ...(listing.timeoutMs ? { timeout: listing.timeoutMs } : {}),
+            });
+
+        try {
+            let response;
+            try {
+                response = await fetchModels(false);
+            } catch (error) {
+                if (
+                    !axios.isAxiosError(error) ||
+                    error.response?.status !== 401
+                ) {
+                    throw error;
+                }
+                response = await fetchModels(true);
+            }
+            return {
+                provider: BYOKProvider.CHATGPT_PLAN,
+                models: listing.parse(response.data),
+                exercisedCredential: true,
+            };
+        } catch (error) {
+            this.logger.warn({
+                message: 'Live model listing for chatgpt_plan failed',
+                context: GetModelsByProviderUseCase.name,
+                metadata: {
+                    organizationId,
+                    status: axios.isAxiosError(error)
+                        ? error.response?.status
+                        : undefined,
+                },
+            });
+            // Never echo the axios error: its config carries the bearer.
+            throw new BadRequestException(
+                error instanceof ChatGptPlanTokenError
+                    ? 'Sign in with ChatGPT to load models.'
+                    : 'Error fetching chatgpt_plan models.',
             );
         }
     }

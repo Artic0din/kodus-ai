@@ -7,7 +7,10 @@ import {
 } from '@libs/llm/byok-config';
 import { validateByokConfigRefs } from '@libs/llm/validate-byok-config-refs';
 import { BYOKProvider } from '@libs/llm/model-providers';
-import { isPlatformFundedProvider } from '@libs/llm/platform-funded-provider';
+import {
+    isKeylessCredential,
+    isPlatformFundedProvider,
+} from '@libs/llm/platform-funded-provider';
 import { isProviderAvailableHere } from '@libs/core/infrastructure/services/providers/kodus-provider-availability';
 import {
     KODUS_PROVIDER_GATE_TOKEN,
@@ -464,6 +467,12 @@ export class CreateOrUpdateOrganizationParametersUseCase implements IUseCase {
                 }
                 return managed;
             }
+            // The plan credential is `{ id, provider }` and nothing else: its
+            // tokens live in `chatgpt_plan_auth`, so any client-sent key or
+            // settings are dropped rather than stored.
+            if (cred?.provider === BYOKProvider.CHATGPT_PLAN) {
+                return { id: cred.id, provider: cred.provider };
+            }
             const byId = existingById.get(cred.id);
             // A stored key only stays with the endpoint it was saved for.
             // Repointing a credential — or a new one on another endpoint
@@ -565,10 +574,10 @@ export class CreateOrUpdateOrganizationParametersUseCase implements IUseCase {
         if (cred?.managed) {
             return;
         }
-        // Platform-funded (`kodus`): no secret by design — Kodus's own upstream
-        // key is read at build time. Cloud-only, so a self-hosted save of one
-        // is refused here rather than persisted as a credential nothing can run.
-        if (isPlatformFundedProvider(cred?.provider)) {
+        // Keyless (`kodus`, `chatgpt_plan`): no secret by design. `kodus` is
+        // cloud-only, so a self-hosted save of one is refused here rather than
+        // persisted as a credential nothing can run.
+        if (isKeylessCredential(cred?.provider)) {
             if (!isProviderAvailableHere(cred.provider)) {
                 throw new BadRequestException(
                     'The Kodus provider is only available on Kodus Cloud',

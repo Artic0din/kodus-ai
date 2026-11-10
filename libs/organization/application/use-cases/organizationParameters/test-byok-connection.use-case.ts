@@ -4,7 +4,14 @@ import {
     suggestApiVersion,
 } from '@libs/llm/base-url-hygiene';
 import { BYOKProvider } from '@libs/llm/model-providers';
-import { isPlatformFundedProvider } from '@libs/llm/platform-funded-provider';
+import {
+    isKeylessCredential,
+    isPlatformFundedProvider,
+} from '@libs/llm/platform-funded-provider';
+import {
+    planRouteCodeFromBody,
+    planRouteErrorFor,
+} from '@libs/llm/providers/chatgpt-plan/route-errors';
 import { REGISTRY } from '@libs/llm/providers';
 import { probeSlotCall } from '@libs/llm/probe-slot-call';
 import {
@@ -281,7 +288,7 @@ export class TestByokConnectionUseCase {
                 });
                 throw new BadRequestException(KODUS_PROVIDER_NOT_ENABLED_MESSAGE);
             }
-            const result = await this.runTest(input);
+            const result = await this.runTest(input, organizationId);
             this.logTestOutcome(input, result);
             // Everything this use case does is a REAL call to the provider, so
             // a pass here is the strong claim. Stamping it once at the boundary
@@ -319,7 +326,10 @@ export class TestByokConnectionUseCase {
         });
     }
 
-    private async runTest(input: TestByokInput): Promise<TestByokResult> {
+    private async runTest(
+        input: TestByokInput,
+        organizationId?: string,
+    ): Promise<TestByokResult> {
         const { provider, apiKey, baseURL } = input;
 
         if (!this.providerService.isProviderSupported(provider)) {
@@ -382,7 +392,7 @@ export class TestByokConnectionUseCase {
             // The credential-only checks stay for a model-less test, which is
             // the case they were written for.
             if (input.model?.trim()) {
-                return await this.probeViaRuntime(input, baseURL);
+                return await this.probeViaRuntime(input, baseURL, organizationId);
             }
 
             if (input.awsBearerToken?.trim()) {
@@ -408,9 +418,10 @@ export class TestByokConnectionUseCase {
             });
         }
 
-        // A platform-funded (`kodus`) slot has no key to type — the probe still
-        // runs the real call, with the platform key resolved inside build().
-        if (!apiKey?.trim() && !isPlatformFundedProvider(byokProvider)) {
+        // A keyless slot (`kodus`, `chatgpt_plan`) has no key to type — the probe
+        // still runs the real call, with the auth resolved inside build()/the
+        // request.
+        if (!apiKey?.trim() && !isKeylessCredential(byokProvider)) {
             throw new BadRequestException('apiKey is required');
         }
 
@@ -520,7 +531,11 @@ export class TestByokConnectionUseCase {
             await assertSafeOpenAICompatibleUrl(effectiveBaseURL);
         }
 
-        const result = await this.probeViaRuntime(input, effectiveBaseURL);
+        const result = await this.probeViaRuntime(
+            input,
+            effectiveBaseURL,
+            organizationId,
+        );
         // Both OpenAI-protocol transports dial `<base URL>/responses` or
         // `/chat/completions` verbatim, so a URL typed without its version 404s
         // on every call (#2150). Not when the provider says the model is missing:
@@ -551,11 +566,12 @@ export class TestByokConnectionUseCase {
     private async probeViaRuntime(
         input: TestByokInput,
         baseURL?: string,
+        organizationId?: string,
     ): Promise<TestByokResult> {
         const start = Date.now();
         try {
             const probe = await probeSlotCall(
-                this.slotFromInput(input, baseURL),
+                this.slotFromInput(input, baseURL, organizationId),
                 { timeoutMs: TEST_TIMEOUT_MS },
             );
             // A passing test used to say only "the credential and model work",
@@ -584,7 +600,11 @@ export class TestByokConnectionUseCase {
                         : undefined),
             };
         } catch (err) {
-            return this.normalizeError(err, Date.now() - start);
+            return this.normalizeError(
+                err,
+                Date.now() - start,
+                input.provider,
+            );
         }
     }
 
@@ -603,6 +623,7 @@ export class TestByokConnectionUseCase {
     private slotFromInput(
         input: TestByokInput,
         baseURL?: string,
+        organizationId?: string,
     ): NormalizedModel {
         // Encrypts whenever a value is present, even whitespace-only — gating on
         // `.trim()` truthiness here while `bedrockModelFromCredentials` decrypts
@@ -629,6 +650,9 @@ export class TestByokConnectionUseCase {
             awsSecretAccessKey: encryptIfPresent(input.awsSecretAccessKey),
             awsRegion: input.awsRegion,
             awsSessionToken: encryptIfPresent(input.awsSessionToken),
+            // From the authenticated request, never from the form: the plan
+            // provider selects the org's ChatGPT tokens with it.
+            organizationId,
         } as NormalizedModel;
     }
 
@@ -968,8 +992,27 @@ export class TestByokConnectionUseCase {
      * failures. Transport-level faults (timeout, DNS, refused) keep their own
      * messages — there is no HTTP status to map.
      */
-    private normalizeError(err: unknown, latencyMs: number): TestByokResult {
+    private normalizeError(
+        err: unknown,
+        latencyMs: number,
+        provider?: string,
+    ): TestByokResult {
         const sdk = this.sdkErrorFacts(err);
+        if (sdk && provider === BYOKProvider.CHATGPT_PLAN) {
+            const route = planRouteErrorFor(planRouteCodeFromBody(sdk.body));
+            if (route) {
+                // The plan route's own code decides the verdict and the copy; the
+                // status the adapter chose only picks the result code.
+                return {
+                    ...this.fromHttpStatus(
+                        route.status,
+                        this.extractProviderMessage(sdk.body),
+                        latencyMs,
+                    ),
+                    message: route.message,
+                };
+            }
+        }
         if (sdk) {
             const providerMessage =
                 this.extractProviderMessage(sdk.body) ?? sdk.message;
