@@ -27,11 +27,12 @@ import { PricingResolver } from './pricing-resolver';
 // Overview cache TTLs. A window that ends before today is immutable (historical
 // spans never change) → cache long. A window that includes today still grows as
 // new spans land → cache briefly so the screen stays snappy without going stale.
-// Both windows cached 4h. Past windows are immutable; the current window trades
-// up-to-4h staleness on today's data for far fewer (expensive) recomputes —
-// which also relieves the concurrent-scan load that caused the original OOM.
+// Past windows are immutable, so they are cached for 4h. The current window is
+// cached for 5 minutes: a 4h cache froze the screen at the first load of the
+// day, and one self-hosted organisation does not produce the concurrent-scan
+// load that motivated the longer cache upstream.
 const OVERVIEW_TTL_PAST_MS = 4 * 60 * 60 * 1000;
-const OVERVIEW_TTL_CURRENT_MS = 4 * 60 * 60 * 1000;
+const OVERVIEW_TTL_CURRENT_MS = 5 * 60 * 1000;
 
 const TO_API_SOURCE: Record<PricingSource, ApiPricingSource> = {
     manual: 'manual',
