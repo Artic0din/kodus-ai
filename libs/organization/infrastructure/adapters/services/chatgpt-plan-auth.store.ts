@@ -20,8 +20,12 @@ export interface StoredChatGptPlanAuth {
     scopes?: string[];
     accessToken?: string;
     refreshToken?: string;
-    /** Kept across sign-out: it is the `id_token_hint` of the next sign-in. */
+    /** The `id_token_hint` of the next sign-in. Kept after a failed refresh,
+     *  cleared by an explicit sign-out. */
     idToken?: string;
+    /** The last sign-in came back without the plan scope; the next one asks
+     *  for consent again. */
+    needsConsent?: boolean;
 }
 
 /** The row, held under the org's advisory lock for the length of a transaction. */
