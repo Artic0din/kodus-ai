@@ -247,7 +247,10 @@ export class ChatGptPlanAuthService implements ChatGptPlanTokenProvider {
         const signInStore = this.requireSignInStore();
         const params = this.parseCallback(callbackUrl);
         const state = params.get('state');
-        if (!state) throw new ChatGptPlanSignInError('callback_invalid');
+        // Checked before claiming, so a mistyped paste can be retried.
+        if (!state || (!params.get('code') && !params.get('error'))) {
+            throw new ChatGptPlanSignInError('callback_invalid');
+        }
 
         const claim = await signInStore.claimAttempt({
             state,
@@ -320,6 +323,15 @@ export class ChatGptPlanAuthService implements ChatGptPlanTokenProvider {
             if (attempt.clientId && current?.clientId !== attempt.clientId) {
                 throw new ChatGptPlanSignInError('attempt_stale');
             }
+            // A switch to an account without plan use must not take down the
+            // connection that is serving reviews now.
+            if (
+                !planGranted &&
+                current?.status === 'connected' &&
+                current.sub !== identity.sub
+            ) {
+                return;
+            }
             const identityFields = {
                 clientId,
                 sub: identity.sub,
@@ -355,7 +367,8 @@ export class ChatGptPlanAuthService implements ChatGptPlanTokenProvider {
             // The connection is already saved; Test & save adds the credential
             // if this write failed, so the admin is not told the sign-in failed.
             this.logger.warn({
-                message: 'Could not add the ChatGPT plan credential to BYOK_CONFIG',
+                message:
+                    'Could not add the ChatGPT plan credential to BYOK_CONFIG',
                 context: ChatGptPlanAuthService.name,
                 metadata: { organizationId: ctx.organizationId },
             });
@@ -460,7 +473,10 @@ export class ChatGptPlanAuthService implements ChatGptPlanTokenProvider {
             if (config.credentials.some((c) => c.provider === 'chatgpt_plan')) {
                 return;
             }
-            next = { ...config, credentials: [...config.credentials, credential] };
+            next = {
+                ...config,
+                credentials: [...config.credentials, credential],
+            };
         } else if (config == null) {
             next = { version: 2, credentials: [credential], models: [] };
         } else {
