@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { CHATGPT_PLAN_PROVIDER_ID } from "../../../_data/chatgpt-plan";
 import { KODUS_PROVIDER_ID } from "../../../_data/platform-funded";
 import type { EditKeyForm } from "./_types";
 
@@ -42,6 +43,9 @@ const CREDS_PRESENT: Record<string, CredsPresent> = {
     // Kodus routes with ITS OWN upstream keys — there is nothing to enter, so
     // the form is always "complete enough" to probe and save.
     [KODUS_PROVIDER_ID]: () => true,
+    // The sign-in lives on the server, not in the form: Test & save always
+    // probes, and the probe fails until ChatGPT is connected.
+    [CHATGPT_PLAN_PROVIDER_ID]: () => true,
     amazon_bedrock: (d) =>
         !!(
             d.awsBearerToken?.trim() ||
@@ -253,6 +257,7 @@ const CREATE_REFINERS: Record<string, CreateRefiner> = {
     amazon_bedrock: refineBedrock,
     // Handled with no issues: a keyless credential IS the valid shape here.
     [KODUS_PROVIDER_ID]: () => true,
+    [CHATGPT_PLAN_PROVIDER_ID]: () => true,
 };
 
 /**

@@ -9,9 +9,20 @@ import {
     CollapsibleIndicator,
     CollapsibleTrigger,
 } from "@components/ui/collapsible";
+import {
+    useChatGptPlanStatus,
+    type ChatGptPlanStatus,
+} from "@services/organizationParameters/chatgpt-plan";
 import { formatUsd } from "@services/usage/format";
-import { CoinsIcon, KeyRoundIcon, PencilIcon } from "lucide-react";
+import {
+    AlertTriangleIcon,
+    CheckCircle2Icon,
+    CoinsIcon,
+    KeyRoundIcon,
+    PencilIcon,
+} from "lucide-react";
 
+import { isChatGptPlanProvider } from "../_data/chatgpt-plan";
 import { isPlatformFundedProvider } from "../_data/platform-funded";
 import { PROVIDER_LABELS } from "../_data/provider-labels";
 import { useKodusCreditBalance } from "../_hooks/use-kodus-credit-balance";
@@ -48,6 +59,10 @@ export function ProviderGroupHeader({
     // A platform-funded credential (Kodus) carries no key: there is nothing
     // to mask and nothing to rotate — usage is billed to the org's credits.
     const platformFunded = isPlatformFundedProvider(credential.provider);
+    // A ChatGPT plan credential carries no key either: its state is whether the
+    // org is signed in.
+    const chatGptPlan = isChatGptPlanProvider(credential.provider);
+    const planStatus = useChatGptPlanStatus(chatGptPlan);
     // Controlled so the header's Top up can open the group and reveal the
     // wallet strip inside it. The Kodus card is the wallet's home: it opens
     // by default (the balance is what the user came to see), and /byok#kodus
@@ -108,6 +123,11 @@ export function ProviderGroupHeader({
                                                     : `Credits used up · nothing routed here`
                                                   : `${balanceLabel} credits · no key needed`}
                                         </span>
+                                    ) : chatGptPlan ? (
+                                        <ChatGptPlanState
+                                            status={planStatus.data}
+                                            loading={planStatus.isLoading}
+                                        />
                                     ) : (
                                         <span className="flex items-center gap-1.5 font-mono">
                                             <KeyRoundIcon size={12} />
@@ -146,7 +166,7 @@ export function ProviderGroupHeader({
                             variant="helper"
                             leftIcon={<PencilIcon />}
                             onClick={onRotate}>
-                            Edit provider
+                            {chatGptPlan ? "Manage account" : "Edit provider"}
                         </Button>
                     )}
                 </div>
@@ -157,5 +177,34 @@ export function ProviderGroupHeader({
                 </CollapsibleContent>
             </Collapsible>
         </Card>
+    );
+}
+
+/** The ChatGPT plan credential's connection state, in place of a masked key. */
+function ChatGptPlanState({
+    status,
+    loading,
+}: {
+    status?: ChatGptPlanStatus;
+    loading: boolean;
+}) {
+    if (loading) return <span>Checking ChatGPT connection…</span>;
+    if (status?.status === "connected") {
+        return (
+            <span className="text-success flex items-center gap-1.5">
+                <CheckCircle2Icon size={12} />
+                {status.email ? `Connected as ${status.email}` : "Connected"}
+            </span>
+        );
+    }
+    return (
+        <span className="text-warning flex items-center gap-1.5">
+            <AlertTriangleIcon size={12} />
+            {status?.status === "not_eligible"
+                ? "Plan use not available for this account"
+                : status?.status === "reauth_required"
+                  ? "Sign in again to use the plan"
+                  : "Not signed in to ChatGPT"}
+        </span>
     );
 }

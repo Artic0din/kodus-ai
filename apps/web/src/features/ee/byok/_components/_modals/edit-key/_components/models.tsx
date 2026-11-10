@@ -16,6 +16,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@components/ui/popover";
+import { useChatGptPlanStatus } from "@services/organizationParameters/chatgpt-plan";
 import type { LLMProviderModel } from "@services/organizationParameters/fetch";
 import {
     useLLMProviderModelsPreview,
@@ -28,6 +29,7 @@ import { Controller, useFormContext } from "react-hook-form";
 import { ArrayHelpers } from "src/core/utils/array";
 
 import type { EditKeyForm } from "../_types";
+import { isChatGptPlanProvider } from "../../../../_data/chatgpt-plan";
 import { formatModelLabel } from "../../../../_data/model-label";
 
 /** "$2 in · $10 out / 1M" — only for a catalog that is also a price list. */
@@ -445,6 +447,12 @@ const ModelSelectLive = ({
     const form = useFormContext<EditKeyForm>();
     const provider = form.watch("provider");
     const isBedrock = provider === "amazon_bedrock";
+    // The ChatGPT plan has no key to type or store: it can list models exactly
+    // when the org is signed in, and a saved credential row says nothing about
+    // that (it survives a sign-out).
+    const isChatGptPlan = isChatGptPlanProvider(provider);
+    const planStatus = useChatGptPlanStatus(isChatGptPlan);
+    const planConnected = planStatus.data?.status === "connected";
     const typedKeyRaw = (form.watch("apiKey") ?? "").trim();
     // Debounced like the key: the URL is typed a character at a time, and each
     // intermediate value would otherwise be a request to a different host.
@@ -482,8 +490,9 @@ const ModelSelectLive = ({
 
     // List live when we have SOMETHING to authenticate with: a typed key, or a
     // stored credential the server resolves on its own. Else prompt for the key.
-    const hasCredential =
-        hasKey || hasAwsBearer || hasAwsIam || credentialStored;
+    const hasCredential = isChatGptPlan
+        ? planConnected
+        : hasKey || hasAwsBearer || hasAwsIam || credentialStored;
     const missingBaseUrl = requiresBaseUrl && !typedBaseURL;
     const enabled = hasCredential && !missingBaseUrl && urlSettled;
 
@@ -522,7 +531,9 @@ const ModelSelectLive = ({
                         <span className="text-text-tertiary font-normal">
                             {missingBaseUrl
                                 ? "Enter the base URL to load models"
-                                : "Enter your API key to load models"}
+                                : isChatGptPlan
+                                  ? "Sign in with ChatGPT to load models"
+                                  : "Enter your API key to load models"}
                         </span>
                     </Button>
                 </FormControl.Input>
@@ -575,7 +586,13 @@ const ModelSelectLive = ({
 
     if (isError) {
         return (
-            <ModelInput hint="Couldn't load models for that key — check it, or type the model id manually." />
+            <ModelInput
+                hint={
+                    isChatGptPlan
+                        ? "Couldn't load models from ChatGPT — sign in again, or type the model id manually."
+                        : "Couldn't load models for that key — check it, or type the model id manually."
+                }
+            />
         );
     }
 

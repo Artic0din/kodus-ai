@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 
 import { BedrockFields } from "./bedrock";
+import { ChatGptPlanFields } from "./chatgpt-plan";
 import { OpenRouterRoutingFields } from "./openrouter-advanced";
 import { VertexFields } from "./vertex";
 
@@ -22,6 +23,8 @@ import { VertexFields } from "./vertex";
 export const CREDENTIAL_FORMS: Record<string, ComponentType> = {
     google_vertex: VertexFields,
     amazon_bedrock: BedrockFields,
+    // No key: the form signs the org in with ChatGPT instead.
+    chatgpt_plan: ChatGptPlanFields,
 };
 
 /**
