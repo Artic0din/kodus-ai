@@ -85,6 +85,12 @@ that means "no BYOK configured" returns `undefined`; don't reintroduce `null`.
   declaration and the request body cannot drift. On a `json_object` route the
   wire carries NO schema, so the executor writes the schema — and the word
   "json", which those providers require — into the prompt itself (#1916).
+- **`providers/chatgpt-plan/`** — the `chatgpt_plan` provider: reviews on an org's
+  ChatGPT plan. The OpenAI Responses client behind `planFetch`, which owns the
+  route's rules (stream folded to JSON, allowlisted body, per-request bearer from
+  the `setChatGptPlanTokenProvider` port, route error codes mapped to synthetic
+  statuses in `route-errors.ts`). The credential is keyless; the tenant comes
+  from `NormalizedModel.organizationId`, stamped by `LLM.run`, never from settings.
 - **`reasoning-options.ts`** — builds provider-specific reasoning/thinking
   `providerOptions` (Anthropic / Gemini / OpenAI / OpenRouter / compatible) from a
   normalized `ReasoningEffort`, plus OpenRouter provider-pinning.

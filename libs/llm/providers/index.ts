@@ -19,6 +19,8 @@ import './novita';
 import './moonshot';
 import './azure';
 import './zai';
+// The org's ChatGPT plan (a transport over the openai module's wire).
+import './chatgpt-plan';
 // Kodus-as-provider (routing brand over the three modules above; cloud-only).
 import './kodus';
 

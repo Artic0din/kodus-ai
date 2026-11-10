@@ -20,3 +20,21 @@ export function isPlatformFundedProvider(
 ): boolean {
     return provider === BYOKProvider.KODUS;
 }
+
+/**
+ * "Does this credential legitimately carry no key of its own?" True for `kodus`
+ * (Kodus's upstream key is read from env at build time) and `chatgpt_plan` (the
+ * bearer is fetched per request from the org's stored ChatGPT sign-in).
+ *
+ * The four key checks listed in the header ask this. It is NOT a funding
+ * question: `chatgpt_plan` is billed to the org's own plan, so it must never be
+ * treated as Kodus-credit funded (`isPlatformFundedProvider` stays `kodus` only).
+ */
+export function isKeylessCredential(
+    provider: string | undefined | null,
+): boolean {
+    return (
+        isPlatformFundedProvider(provider) ||
+        provider === BYOKProvider.CHATGPT_PLAN
+    );
+}

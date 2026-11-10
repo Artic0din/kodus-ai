@@ -32,4 +32,10 @@ export enum BYOKProvider {
      * Cloud-only; see libs/llm/providers/kodus.
      */
     KODUS = 'kodus',
+    /**
+     * The org's ChatGPT plan, reached through OpenAI's "Sign in with ChatGPT"
+     * plan-usage flow. The credential carries no key; the bearer token comes
+     * from the token provider port at request time. See providers/chatgpt-plan.
+     */
+    CHATGPT_PLAN = 'chatgpt_plan',
 }

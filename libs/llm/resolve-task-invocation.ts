@@ -22,6 +22,7 @@
 import type { BYOKConfig, LlmTask, NormalizedModel } from './byok-config';
 import type { RequestContext, RoutingVerdict } from './routing-strategy';
 import { resolveTaskSlot } from './resolve-task-model';
+import { stampOrganizationId } from './stamp-organization';
 import {
     resolveModelConfig,
     type ModelInvocation,
@@ -61,7 +62,8 @@ export function resolveTaskInvocation(
 ): TaskInvocation {
     const { ctx, ...invocationOptions } = options;
 
-    const { slot, verdict } = resolveTaskSlot(config, task, { ctx });
+    const { slot: routed, verdict } = resolveTaskSlot(config, task, { ctx });
+    const slot = stampOrganizationId(routed, options.organizationId);
     const invocation = resolveModelConfig(slot, invocationOptions);
 
     return {

@@ -157,6 +157,11 @@ export interface NormalizedModel {
      *    tier — makes a silent primary→fallback swap visible on the span. */
     route?: string;
     usedFallback?: boolean;
+    /** The authenticated tenant, stamped by `LLM.run` (and the connection probe)
+     *  from server-side state only. `chatgpt_plan` selects the org's ChatGPT
+     *  tokens with it, so it is NEVER read from credential `settings` or any
+     *  client input. */
+    organizationId?: string;
     /** The RUNTIME failover target for this slot: the org's configured
      *  `routing.fallbackModelId`, resolved + capability-gated, stamped here by
      *  `resolveTaskSlot` so it rides ALONG the primary slot to `LLM.run` with no
