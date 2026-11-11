@@ -96,13 +96,11 @@ async function bootstrap() {
         });
 
         await appContext.get(ObservabilityService).init('worker');
-        // Only the code-review role runs reviews; the analytics role does not
-        // load the organization module.
-        if (role === 'code-review') {
-            setChatGptPlanTokenProvider(
-                appContext.get(ChatGptPlanAuthService, { strict: false }),
-            );
-        }
+        // Both roles load the organization module, and both can run a model on
+        // a connected ChatGPT plan (reviews here, the PR classifier on analytics).
+        setChatGptPlanTokenProvider(
+            appContext.get(ChatGptPlanAuthService, { strict: false }),
+        );
 
         appContext.enableShutdownHooks();
 
