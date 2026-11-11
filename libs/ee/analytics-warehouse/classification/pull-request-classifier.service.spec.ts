@@ -13,6 +13,15 @@
  * rather than driving generateText+Output.object against a MockLanguageModelV4 —
  * that structured-output path hangs against an offline model double.
  */
+// Gitignored in the repo; the classifier reads only the cloud flag.
+const mockCloud = { value: false };
+jest.mock('@libs/ee/configs/environment', () => ({
+    environment: {
+        get API_CLOUD_MODE() {
+            return mockCloud.value;
+        },
+    },
+}));
 jest.mock('@libs/llm/byok-to-vercel', () => ({
     mayUseJsonSchema: jest.fn(() => true),
     markJsonSchemaUnsupported: jest.fn(),
@@ -184,14 +193,22 @@ describe('classifyBatch — A. output-shape zoo (off-schema returns degrade to a
     });
 
     it('row 3 — single object where an array is expected (classifications is a bare object): fails EXPLICITLY (not iterable), absorbed by run()', async () => {
-        resolveOutput({ classifications: { pullRequestId: 'pr-1', type: 'Bug Fix' } });
-        await expect((buildService() as any).classifyBatch(batch)).rejects.toThrow();
+        resolveOutput({
+            classifications: { pullRequestId: 'pr-1', type: 'Bug Fix' },
+        });
+        await expect(
+            (buildService() as any).classifyBatch(batch),
+        ).rejects.toThrow();
     });
 
     it('row 4 — wrapper keys {result|data|output|response|json: D}: typed-empty Map (payload unreachable, no invented answer)', async () => {
         for (const key of ['result', 'data', 'output', 'response', 'json']) {
             const map = await classify({
-                [key]: { classifications: [{ pullRequestId: 'pr-1', type: 'Bug Fix' }] },
+                [key]: {
+                    classifications: [
+                        { pullRequestId: 'pr-1', type: 'Bug Fix' },
+                    ],
+                },
             });
             expect(map.size).toBe(0);
         }
@@ -199,7 +216,9 @@ describe('classifyBatch — A. output-shape zoo (off-schema returns degrade to a
 
     it('row 7 — stringified JSON (whole D as a string): typed-empty Map, no throw', async () => {
         const map = await classify(
-            JSON.stringify({ classifications: [{ pullRequestId: 'pr-1', type: 'Bug Fix' }] }),
+            JSON.stringify({
+                classifications: [{ pullRequestId: 'pr-1', type: 'Bug Fix' }],
+            }),
         );
         expect(map.size).toBe(0);
     });
@@ -238,7 +257,12 @@ describe('classifyBatch — A. output-shape zoo (off-schema returns degrade to a
             reasoning: 'analysed titles',
             usage: { tokens: 42 },
             classifications: [
-                { pullRequestId: 'pr-1', type: 'Bug Fix', confidence: 0.9, extra: 'x' },
+                {
+                    pullRequestId: 'pr-1',
+                    type: 'Bug Fix',
+                    confidence: 0.9,
+                    extra: 'x',
+                },
             ],
         });
         expect([...map.entries()]).toEqual([['pr-1', 'Bug Fix']]);
@@ -248,7 +272,6 @@ describe('classifyBatch — A. output-shape zoo (off-schema returns degrade to a
         expect((await classify(null)).size).toBe(0);
         expect((await classify(undefined)).size).toBe(0);
     });
-
 });
 
 describe('classifyBatch — B. semantic-but-wrong (valid JSON, wrong value encoding) is DROPPED, never mis-mapped', () => {
@@ -336,7 +359,9 @@ describe('classifyBatch / run — C. unparseable / transport: the fail-safe laye
 
     it('row 30 — LLM.run throws (network/timeout): classifyBatch propagates AND run() absorbs it into `failed`, never rethrows', async () => {
         mockGenerate.mockRejectedValue(new Error('ECONNRESET'));
-        await expect((buildService() as any).classifyBatch(batch)).rejects.toThrow('ECONNRESET');
+        await expect(
+            (buildService() as any).classifyBatch(batch),
+        ).rejects.toThrow('ECONNRESET');
 
         // run() fail-safe: the whole batch is counted failed, nothing crashes,
         // rows stay unclassified for the next cron tick.
@@ -359,8 +384,12 @@ describe('classifyBatch / run — C. unparseable / transport: the fail-safe laye
     });
 
     it('array with a null element fails explicitly (not silently) and is absorbed by run()', async () => {
-        resolveOutput({ classifications: [null, { pullRequestId: 'pr-1', type: 'Bug Fix' }] });
-        await expect((buildService() as any).classifyBatch(batch)).rejects.toThrow();
+        resolveOutput({
+            classifications: [null, { pullRequestId: 'pr-1', type: 'Bug Fix' }],
+        });
+        await expect(
+            (buildService() as any).classifyBatch(batch),
+        ).rejects.toThrow();
     });
 });
 
@@ -377,7 +406,9 @@ describe('run — D. input variants: the boundary invariant holds across the inp
     ) {
         const svc = buildService();
         jest.spyOn(svc as any, 'fetchPending').mockResolvedValue(rows);
-        jest.spyOn(svc as any, 'fetchTitlesFromMongo').mockResolvedValue(titles);
+        jest.spyOn(svc as any, 'fetchTitlesFromMongo').mockResolvedValue(
+            titles,
+        );
         jest.spyOn(svc as any, 'writeClassifications').mockImplementation(
             (async (b: any[], results: Map<string, string>) =>
                 b.filter((r) => results.has(r.id)).length) as any,
@@ -400,7 +431,12 @@ describe('run — D. input variants: the boundary invariant holds across the inp
         const fetchTitles = jest.spyOn(svc as any, 'fetchTitlesFromMongo');
 
         const res = await svc.run();
-        expect(res).toMatchObject({ scanned: 0, classified: 0, failed: 0, batches: 0 });
+        expect(res).toMatchObject({
+            scanned: 0,
+            classified: 0,
+            failed: 0,
+            batches: 0,
+        });
         expect(fetchTitles).not.toHaveBeenCalled();
         expect(mockGenerate).not.toHaveBeenCalled();
     });
@@ -411,7 +447,12 @@ describe('run — D. input variants: the boundary invariant holds across the inp
             new Map([['pr-1', 'fix: x']]),
             ['pr-1'],
         );
-        expect(res).toMatchObject({ scanned: 1, classified: 1, failed: 0, batches: 1 });
+        expect(res).toMatchObject({
+            scanned: 1,
+            classified: 1,
+            failed: 0,
+            batches: 1,
+        });
         expect(mockGenerate).toHaveBeenCalledTimes(1);
     });
 
@@ -463,7 +504,9 @@ describe('run — D. input variants: the boundary invariant holds across the inp
                 b.filter((r) => results.has(r.id)).length) as any,
         );
         mockGenerate.mockResolvedValue({
-            experimental_output: { classifications: [{ pullRequestId: 'pr-1', type: 'Feature' }] },
+            experimental_output: {
+                classifications: [{ pullRequestId: 'pr-1', type: 'Feature' }],
+            },
         });
 
         const res = await svc.run();
@@ -489,7 +532,9 @@ describe('run — D. input variants: the boundary invariant holds across the inp
                 b.filter((r) => results.has(r.id)).length) as any,
         );
         mockGenerate.mockResolvedValue({
-            experimental_output: { classifications: [{ pullRequestId: 'uni', type: 'Bug Fix' }] },
+            experimental_output: {
+                classifications: [{ pullRequestId: 'uni', type: 'Bug Fix' }],
+            },
         });
 
         const res = await svc.run();
@@ -548,7 +593,7 @@ describe('run — D. input variants: the boundary invariant holds across the inp
     });
 });
 
-describe('classifyBatch — request assembly + E. model policy is delegated (byokConfig always undefined → managed default)', () => {
+describe('classifyBatch — request assembly + E. model policy is delegated (no org model → server default)', () => {
     beforeEach(resetLlm);
 
     it('threads the exact schema / system / user / runName / byokConfig=undefined into the LLM.run call', async () => {
@@ -566,5 +611,144 @@ describe('classifyBatch — request assembly + E. model policy is delegated (byo
         expect(genArg.prompt).toContain('pr-1');
         expect(genArg.prompt).toContain('fix: null deref in parser');
         expect(genArg.output).toBeDefined(); // Output.object structured mode
+    });
+});
+
+describe("run — each batch runs on its organization's BYOK model", () => {
+    beforeEach(resetLlm);
+
+    const byokFor = (model: string) => ({
+        version: 2,
+        credentials: [
+            { id: 'c1', provider: 'openai', apiKey: 'k', settings: {} },
+        ],
+        models: [{ id: 'm1', credentialId: 'c1', model }],
+        routing: { defaultModelId: 'm1' },
+    });
+
+    it('splits batches by org and passes each org its own slot (none when unconfigured)', async () => {
+        const configs: Record<string, unknown> = {
+            'org-a': byokFor('model-a'),
+            'org-b': byokFor('model-b'),
+        };
+        const orgParams = {
+            findByKey: jest.fn(async (_key: string, { organizationId }: any) =>
+                configs[organizationId]
+                    ? { configValue: configs[organizationId] }
+                    : null,
+            ),
+        };
+        const moduleRef = { get: jest.fn(() => orgParams) };
+        const svc = new PullRequestClassifierService(
+            {} as any,
+            {} as any,
+            observabilityService,
+            moduleRef as any,
+        );
+        const rows = [
+            { id: 'a1', organizationId: 'org-a' },
+            { id: 'b1', organizationId: 'org-b' },
+            { id: 'a2', organizationId: 'org-a' },
+            { id: 'c1', organizationId: 'org-c' },
+        ];
+        jest.spyOn(svc as any, 'fetchPending').mockResolvedValue(rows);
+        jest.spyOn(svc as any, 'fetchTitlesFromMongo').mockResolvedValue(
+            new Map(rows.map((r) => [r.id, `title ${r.id}`])),
+        );
+        jest.spyOn(svc as any, 'writeClassifications').mockResolvedValue(0);
+        resolveOutput({ classifications: [] });
+        const classifyBatch = jest.spyOn(svc as any, 'classifyBatch');
+
+        const res = await svc.run({ batchSize: 25 });
+
+        expect(res.batches).toBe(3);
+        const calls = classifyBatch.mock.calls.map(([batch, slot]: any) => [
+            batch.map((r: any) => r.id),
+            slot?.model,
+        ]);
+        expect(calls).toEqual([
+            [['a1', 'a2'], 'model-a'],
+            [['b1'], 'model-b'],
+            [['c1'], undefined],
+        ]);
+    });
+
+    it('keeps the server default on cloud, where the org pays for its own keys', async () => {
+        mockCloud.value = true;
+        try {
+            const findByKey = jest.fn();
+            const svc = new PullRequestClassifierService(
+                {} as any,
+                {} as any,
+                observabilityService,
+                { get: jest.fn(() => ({ findByKey })) } as any,
+            );
+            jest.spyOn(svc as any, 'fetchPending').mockResolvedValue([
+                { id: 'a1', organizationId: 'org-a' },
+            ]);
+            jest.spyOn(svc as any, 'fetchTitlesFromMongo').mockResolvedValue(
+                new Map([['a1', 'title']]),
+            );
+            jest.spyOn(svc as any, 'writeClassifications').mockResolvedValue(1);
+            resolveOutput({ classifications: [] });
+            const classifyBatch = jest.spyOn(svc as any, 'classifyBatch');
+
+            await svc.run();
+
+            expect(classifyBatch.mock.calls[0][1]).toBeUndefined();
+            expect(findByKey).not.toHaveBeenCalled();
+        } finally {
+            mockCloud.value = false;
+        }
+    });
+
+    it('keeps cross-org batches on cloud, where every batch uses the same model', async () => {
+        mockCloud.value = true;
+        try {
+            const svc = buildService();
+            const rows = [
+                { id: 'a1', organizationId: 'org-a' },
+                { id: 'b1', organizationId: 'org-b' },
+            ];
+            jest.spyOn(svc as any, 'fetchPending').mockResolvedValue(rows);
+            jest.spyOn(svc as any, 'fetchTitlesFromMongo').mockResolvedValue(
+                new Map(rows.map((r) => [r.id, `title ${r.id}`])),
+            );
+            jest.spyOn(svc as any, 'writeClassifications').mockResolvedValue(2);
+            resolveOutput({ classifications: [] });
+
+            const res = await svc.run({ batchSize: 25 });
+
+            expect(res.batches).toBe(1);
+        } finally {
+            mockCloud.value = false;
+        }
+    });
+
+    it('falls back to the server default when the app has no organization module', async () => {
+        const moduleRef = {
+            get: jest.fn(() => {
+                throw new Error('not found');
+            }),
+        };
+        const svc = new PullRequestClassifierService(
+            {} as any,
+            {} as any,
+            observabilityService,
+            moduleRef as any,
+        );
+        jest.spyOn(svc as any, 'fetchPending').mockResolvedValue([
+            { id: 'a1', organizationId: 'org-a' },
+        ]);
+        jest.spyOn(svc as any, 'fetchTitlesFromMongo').mockResolvedValue(
+            new Map([['a1', 'title']]),
+        );
+        jest.spyOn(svc as any, 'writeClassifications').mockResolvedValue(1);
+        resolveOutput({ classifications: [] });
+        const classifyBatch = jest.spyOn(svc as any, 'classifyBatch');
+
+        await svc.run();
+
+        expect(classifyBatch.mock.calls[0][1]).toBeUndefined();
     });
 });

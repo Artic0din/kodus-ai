@@ -1,11 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { LLM } from '@libs/llm/llm';
+import { LLM_TASK, type NormalizedModel } from '@libs/llm/byok-config';
+import { resolveTaskSlot } from '@libs/llm/resolve-task-model';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
 import { DataSource } from 'typeorm';
 
+import { OrganizationParametersKey } from '@libs/core/domain/enums';
+import { environment } from '@libs/ee/configs/environment';
 import { ObservabilityService } from '@libs/core/log/observability.service';
+import {
+    ORGANIZATION_PARAMETERS_SERVICE_TOKEN,
+    type IOrganizationParametersService,
+} from '@libs/organization/domain/organizationParameters/contracts/organizationParameters.service.contract';
 import { PullRequestsModel } from '@libs/platformData/infrastructure/adapters/repositories/schemas/pullRequests.model';
 
 import { ANALYTICS_DATA_SOURCE } from '../schema.constant';
@@ -72,9 +81,12 @@ export class PullRequestClassifierService {
         @InjectModel(PullRequestsModel.name)
         private readonly pullRequestsModel: Model<PullRequestsModel>,
         private readonly observabilityService: ObservabilityService,
+        private readonly moduleRef?: ModuleRef,
     ) {}
 
-    async run(options: ClassifierRunOptions = {}): Promise<ClassifierRunResult> {
+    async run(
+        options: ClassifierRunOptions = {},
+    ): Promise<ClassifierRunResult> {
         const maxRows = options.maxRows ?? DEFAULT_MAX_ROWS;
         const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
         const startedAt = Date.now();
@@ -112,11 +124,29 @@ export class PullRequestClassifierService {
         let failed = pendingIds.length - pending.length;
         let batches = 0;
 
-        for (let i = 0; i < pending.length; i += batchSize) {
-            const batch = pending.slice(i, i + batchSize);
+        // Self-hosted: one org per batch, so each batch runs on that org's own
+        // model. Cloud uses one model for all, so batches stay cross-org.
+        const groupOf = (row: PendingRow) =>
+            environment.API_CLOUD_MODE ? '' : row.organizationId;
+        const byOrg = new Map<string, Required<PendingRow>[]>();
+        for (const row of pending) {
+            const rows = byOrg.get(groupOf(row)) ?? [];
+            rows.push(row);
+            byOrg.set(groupOf(row), rows);
+        }
+        const chunks = [...byOrg.values()].flatMap((rows) =>
+            Array.from({ length: Math.ceil(rows.length / batchSize) }, (_, i) =>
+                rows.slice(i * batchSize, (i + 1) * batchSize),
+            ),
+        );
+
+        for (const batch of chunks) {
             batches += 1;
             try {
-                const results = await this.classifyBatch(batch);
+                const results = await this.classifyBatch(
+                    batch,
+                    await this.resolveOrgSlot(batch[0].organizationId),
+                );
                 const written = await this.writeClassifications(batch, results);
                 classified += written;
                 failed += batch.length - written;
@@ -197,28 +227,54 @@ export class PullRequestClassifierService {
         return out;
     }
 
+    /**
+     * The org's BYOK model for this task, or undefined for the server default.
+     * Self-hosted only: on cloud this background job stays on the managed
+     * default rather than billing each org's own keys or credits.
+     * Looked up through the app context because the backfill scripts load this
+     * module without the organization module.
+     */
+    private async resolveOrgSlot(
+        organizationId: string,
+    ): Promise<NormalizedModel | undefined> {
+        if (environment.API_CLOUD_MODE) return undefined;
+        let params: IOrganizationParametersService | undefined;
+        try {
+            params = this.moduleRef?.get<IOrganizationParametersService>(
+                ORGANIZATION_PARAMETERS_SERVICE_TOKEN,
+                { strict: false },
+            );
+        } catch {
+            return undefined;
+        }
+        if (!params) return undefined;
+        const stored = await params.findByKey(
+            OrganizationParametersKey.BYOK_CONFIG,
+            { organizationId },
+        );
+        return resolveTaskSlot(stored?.configValue, LLM_TASK.prSummary).slot;
+    }
+
     private async classifyBatch(
         batch: Required<PendingRow>[],
+        byokConfig?: NormalizedModel,
     ): Promise<Map<string, PRType>> {
         const payload = batch.map((row) => ({
             pullRequestId: row.id,
             title: row.title,
         }));
 
-        // Migrated off the legacy LangChain PromptRunner path onto the AI
-        // SDK path (REQ-NOLC-01). byokConfig is undefined here →
-        // runStructuredReviewCall resolves the managed review default; the previous
-        // GEMINI_3_1_FLASH_LITE_PREVIEW/NOVITA_DEEPSEEK_V3_0324 provider pin
-        // is intentionally dropped (RESEARCH Pattern 1 — consolidation to the
-        // managed default). This is a cost/latency profile change for a high-volume
-        // batch job; it is flagged, reversible, and re-optimized by Phase 4 routing.
-        // Parity is proven on the parsed classifications[] → Map<string, PRType>.
+        // Runs on the org's BYOK model when it has one, else the server default.
         const result = await LLM.run({
             schema: classificationBatchSchema,
             system: prompt_ClassifyPRTypesSystem,
             user: prompt_ClassifyPRTypesUser(payload),
             runName: 'analytics.pr-type-classifier',
-            byokConfig: undefined,
+            // A cloud batch spans orgs, so it carries no single org.
+            organizationId: environment.API_CLOUD_MODE
+                ? undefined
+                : batch[0]?.organizationId,
+            byokConfig,
         });
 
         const classifications = result?.classifications ?? [];
