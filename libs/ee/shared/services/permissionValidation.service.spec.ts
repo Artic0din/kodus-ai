@@ -101,6 +101,26 @@ describe('PermissionValidationService — self-hosted permissions', () => {
             model: 'gpt-4o',
         });
     });
+
+    it('still allows the run when the model lookup fails', async () => {
+        const svc = new PermissionValidationService(
+            { validateOrganizationLicense: jest.fn() } as any,
+            {
+                findByKey: jest.fn().mockRejectedValue(new Error('db down')),
+            } as any,
+        );
+
+        const res = await svc.validateExecutionPermissions(
+            {
+                organizationId: '7f5bc971-76c2-4586-a624-84a7a98c696c',
+                teamId: 'team-1',
+            } as any,
+            undefined,
+            'KodyIssuesManagementService',
+        );
+
+        expect(res).toEqual({ allowed: true });
+    });
 });
 
 // A BYOK org whose configured model can't be routed (broken/incomplete credential)

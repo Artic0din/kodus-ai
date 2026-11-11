@@ -13,6 +13,15 @@
  * rather than driving generateText+Output.object against a MockLanguageModelV4 —
  * that structured-output path hangs against an offline model double.
  */
+// Gitignored in the repo; the classifier reads only the cloud flag.
+const mockCloud = { value: false };
+jest.mock('@libs/ee/configs/environment', () => ({
+    environment: {
+        get API_CLOUD_MODE() {
+            return mockCloud.value;
+        },
+    },
+}));
 jest.mock('@libs/llm/byok-to-vercel', () => ({
     mayUseJsonSchema: jest.fn(() => true),
     markJsonSchemaUnsupported: jest.fn(),
@@ -662,6 +671,35 @@ describe("run — each batch runs on its organization's BYOK model", () => {
             [['b1'], 'model-b'],
             [['c1'], undefined],
         ]);
+    });
+
+    it('keeps the server default on cloud, where the org pays for its own keys', async () => {
+        mockCloud.value = true;
+        try {
+            const findByKey = jest.fn();
+            const svc = new PullRequestClassifierService(
+                {} as any,
+                {} as any,
+                observabilityService,
+                { get: jest.fn(() => ({ findByKey })) } as any,
+            );
+            jest.spyOn(svc as any, 'fetchPending').mockResolvedValue([
+                { id: 'a1', organizationId: 'org-a' },
+            ]);
+            jest.spyOn(svc as any, 'fetchTitlesFromMongo').mockResolvedValue(
+                new Map([['a1', 'title']]),
+            );
+            jest.spyOn(svc as any, 'writeClassifications').mockResolvedValue(1);
+            resolveOutput({ classifications: [] });
+            const classifyBatch = jest.spyOn(svc as any, 'classifyBatch');
+
+            await svc.run();
+
+            expect(classifyBatch.mock.calls[0][1]).toBeUndefined();
+            expect(findByKey).not.toHaveBeenCalled();
+        } finally {
+            mockCloud.value = false;
+        }
     });
 
     it('falls back to the server default when the app has no organization module', async () => {

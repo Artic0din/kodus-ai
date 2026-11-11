@@ -712,14 +712,26 @@ export class PermissionValidationService {
         _contextName?: string,
     ): Promise<ValidationResult> {
         // Callers take their model from this result, as on cloud; without it
-        // they fall to the server env model.
-        return {
-            allowed: true,
-            byokConfig: await this.resolveTaskSlot(
-                organizationAndTeamData,
-                LLM_TASK.codeReview,
-            ),
-        };
+        // they fall to the server env model. A failed lookup must not block a
+        // self-hosted run, so it falls back to that default instead.
+        try {
+            return {
+                allowed: true,
+                byokConfig: await this.resolveTaskSlot(
+                    organizationAndTeamData,
+                    LLM_TASK.codeReview,
+                ),
+            };
+        } catch (error) {
+            this.logger.warn({
+                message:
+                    'Self-hosted model lookup failed; using the server default model',
+                context: PermissionValidationService.name,
+                error,
+                metadata: { organizationAndTeamData },
+            });
+            return { allowed: true };
+        }
     }
 
     /**

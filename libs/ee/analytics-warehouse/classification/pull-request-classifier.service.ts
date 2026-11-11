@@ -9,6 +9,7 @@ import { Model } from 'mongoose';
 import { DataSource } from 'typeorm';
 
 import { OrganizationParametersKey } from '@libs/core/domain/enums';
+import { environment } from '@libs/ee/configs/environment';
 import { ObservabilityService } from '@libs/core/log/observability.service';
 import {
     ORGANIZATION_PARAMETERS_SERVICE_TOKEN,
@@ -225,12 +226,15 @@ export class PullRequestClassifierService {
 
     /**
      * The org's BYOK model for this task, or undefined for the server default.
+     * Self-hosted only: on cloud this background job stays on the managed
+     * default rather than billing each org's own keys or credits.
      * Looked up through the app context because the backfill scripts load this
      * module without the organization module.
      */
     private async resolveOrgSlot(
         organizationId: string,
     ): Promise<NormalizedModel | undefined> {
+        if (environment.API_CLOUD_MODE) return undefined;
         let params: IOrganizationParametersService | undefined;
         try {
             params = this.moduleRef?.get<IOrganizationParametersService>(
