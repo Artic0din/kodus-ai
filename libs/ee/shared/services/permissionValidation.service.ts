@@ -1,7 +1,5 @@
 import type { NormalizedModel } from '@libs/llm/byok-config';
-import {
-    resolveTaskSlot as resolveTaskSlotFromConfig,
-} from '@libs/llm/resolve-task-model';
+import { resolveTaskSlot as resolveTaskSlotFromConfig } from '@libs/llm/resolve-task-model';
 import {
     resolveTaskInvocation as resolveTaskInvocationFromConfig,
     type ResolveTaskInvocationOptions,
@@ -709,11 +707,19 @@ export class PermissionValidationService {
      * reviews, chat and issues — no license or seat enforcement.
      */
     private async validateSelfHostedPermissions(
-        _organizationAndTeamData: OrganizationAndTeamData,
+        organizationAndTeamData: OrganizationAndTeamData,
         _userGitId?: string,
         _contextName?: string,
     ): Promise<ValidationResult> {
-        return { allowed: true };
+        // Callers take their model from this result, as on cloud; without it
+        // they fall to the server env model.
+        return {
+            allowed: true,
+            byokConfig: await this.resolveTaskSlot(
+                organizationAndTeamData,
+                LLM_TASK.codeReview,
+            ),
+        };
     }
 
     /**
@@ -980,8 +986,7 @@ export class PermissionValidationService {
                 message: `[byok-routing] "${task}" selected ${verdict.modelId} but its credential is incomplete — degraded to the managed default`,
                 context: 'resolveTaskSlot',
                 metadata: {
-                    organizationId:
-                        organizationAndTeamData?.organizationId,
+                    organizationId: organizationAndTeamData?.organizationId,
                     teamId: organizationAndTeamData?.teamId,
                     task,
                     resolvedModelId: verdict.modelId,
@@ -1065,7 +1070,11 @@ export class PermissionValidationService {
             task,
             options,
         );
-        this.logRoutingVerdict(organizationAndTeamData, task, invocation.verdict);
+        this.logRoutingVerdict(
+            organizationAndTeamData,
+            task,
+            invocation.verdict,
+        );
         return invocation;
     }
 

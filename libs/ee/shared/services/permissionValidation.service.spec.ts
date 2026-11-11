@@ -52,6 +52,55 @@ describe('PermissionValidationService — self-hosted permissions', () => {
 
         expect(res.allowed).toBe(true);
     });
+
+    // Callers such as Kody Issues take their model from this result; without
+    // it they ran on the server env key instead of the org's models.
+    it("returns the org's code-review model, as the cloud path does", async () => {
+        const licenseService = {
+            validateOrganizationLicense: jest.fn(),
+            getAllUsersWithLicense: jest.fn(),
+        };
+        const orgParams = {
+            findByKey: jest.fn().mockResolvedValue({
+                configValue: {
+                    version: 2,
+                    credentials: [
+                        {
+                            id: 'c1',
+                            provider: 'openai',
+                            apiKey: 'sk-test',
+                            settings: {},
+                        },
+                    ],
+                    models: [{ id: 'm1', credentialId: 'c1', model: 'gpt-4o' }],
+                    routing: {
+                        mode: 'manual',
+                        defaultModelId: 'm1',
+                        taskOverrides: {},
+                    },
+                },
+            }),
+        };
+        const svc = new PermissionValidationService(
+            licenseService as any,
+            orgParams as any,
+        );
+
+        const res = await svc.validateExecutionPermissions(
+            {
+                organizationId: '7f5bc971-76c2-4586-a624-84a7a98c696c',
+                teamId: 'team-1',
+            } as any,
+            undefined,
+            'KodyIssuesManagementService',
+        );
+
+        expect(res.allowed).toBe(true);
+        expect(res.byokConfig).toMatchObject({
+            provider: 'openai',
+            model: 'gpt-4o',
+        });
+    });
 });
 
 // A BYOK org whose configured model can't be routed (broken/incomplete credential)
