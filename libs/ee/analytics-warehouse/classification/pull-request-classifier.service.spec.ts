@@ -702,6 +702,29 @@ describe("run — each batch runs on its organization's BYOK model", () => {
         }
     });
 
+    it('keeps cross-org batches on cloud, where every batch uses the same model', async () => {
+        mockCloud.value = true;
+        try {
+            const svc = buildService();
+            const rows = [
+                { id: 'a1', organizationId: 'org-a' },
+                { id: 'b1', organizationId: 'org-b' },
+            ];
+            jest.spyOn(svc as any, 'fetchPending').mockResolvedValue(rows);
+            jest.spyOn(svc as any, 'fetchTitlesFromMongo').mockResolvedValue(
+                new Map(rows.map((r) => [r.id, `title ${r.id}`])),
+            );
+            jest.spyOn(svc as any, 'writeClassifications').mockResolvedValue(2);
+            resolveOutput({ classifications: [] });
+
+            const res = await svc.run({ batchSize: 25 });
+
+            expect(res.batches).toBe(1);
+        } finally {
+            mockCloud.value = false;
+        }
+    });
+
     it('falls back to the server default when the app has no organization module', async () => {
         const moduleRef = {
             get: jest.fn(() => {

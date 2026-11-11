@@ -124,12 +124,15 @@ export class PullRequestClassifierService {
         let failed = pendingIds.length - pending.length;
         let batches = 0;
 
-        // One org per batch, so each batch runs on that org's own model.
+        // Self-hosted: one org per batch, so each batch runs on that org's own
+        // model. Cloud uses one model for all, so batches stay cross-org.
+        const groupOf = (row: PendingRow) =>
+            environment.API_CLOUD_MODE ? '' : row.organizationId;
         const byOrg = new Map<string, Required<PendingRow>[]>();
         for (const row of pending) {
-            const rows = byOrg.get(row.organizationId) ?? [];
+            const rows = byOrg.get(groupOf(row)) ?? [];
             rows.push(row);
-            byOrg.set(row.organizationId, rows);
+            byOrg.set(groupOf(row), rows);
         }
         const chunks = [...byOrg.values()].flatMap((rows) =>
             Array.from({ length: Math.ceil(rows.length / batchSize) }, (_, i) =>
@@ -267,7 +270,10 @@ export class PullRequestClassifierService {
             system: prompt_ClassifyPRTypesSystem,
             user: prompt_ClassifyPRTypesUser(payload),
             runName: 'analytics.pr-type-classifier',
-            organizationId: batch[0]?.organizationId,
+            // A cloud batch spans orgs, so it carries no single org.
+            organizationId: environment.API_CLOUD_MODE
+                ? undefined
+                : batch[0]?.organizationId,
             byokConfig,
         });
 
