@@ -7,8 +7,8 @@ import {
 } from "@services/permissions/types";
 import { hasPermission } from "src/core/utils/permission-map";
 
-import { isPlatformFundedProvider } from "./_data/platform-funded";
 import type { OrganizationLicense } from "../subscription/_services/billing/types";
+import { isPlatformFundedProvider } from "./_data/platform-funded";
 import type {
     BYOKConfig,
     BYOKCredential,
@@ -23,6 +23,7 @@ import type {
  */
 export const TASK_LABELS: Record<LlmTask, string> = {
     codeReview: "Code Review",
+    riskAssessment: "Risk Assessment",
     codeReviewHeavy: "Code Review (Heavy)",
     kodyRulesReview: "Kody Rules (review)",
     ruleGeneration: "Kody Rules (generation)",
@@ -30,6 +31,7 @@ export const TASK_LABELS: Record<LlmTask, string> = {
     prSummary: "PR Summary",
     conversation: "Chat",
     customAgent: "Custom Agents",
+    securityScan: "Deep scan",
 };
 
 /**
@@ -41,6 +43,8 @@ export const TASK_LABELS: Record<LlmTask, string> = {
 export const TASK_DESCRIPTIONS: Record<LlmTask, string> = {
     codeReview:
         "Reviews every pull request and posts inline comments. Runs on each PR — highest volume.",
+    riskAssessment:
+        "Assesses PR risk before review. Shared by routing, approval and custom agents.",
     codeReviewHeavy:
         "Runs a heavy review: the main reviewer plus nine specialists. Used when the review mode is Heavy or a review asks for --heavy.",
     kodyRulesReview:
@@ -52,6 +56,8 @@ export const TASK_DESCRIPTIONS: Record<LlmTask, string> = {
     conversation: "Powers the Kody chat assistant in the dashboard and IDE.",
     customAgent:
         "Runs the review agents your team created. Each one reads the PRs its file patterns match, writes findings and verifies them.",
+    securityScan:
+        "Audits a whole repository for vulnerabilities when someone runs a deep scan. Long runs with tools, on demand.",
 };
 
 /** Resolve a model id to its human label within a pool, falling back to the raw

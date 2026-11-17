@@ -1,3 +1,7 @@
+import {
+    repositoryGrepArgs,
+    type RepositoryGrepOptions,
+} from '@libs/common/utils/repository-grep';
 import { buildGitAuthHeader } from './git-auth-header';
 import { createLogger } from '@libs/core/log/logger';
 import { PlatformType } from '@libs/core/domain/enums';
@@ -34,6 +38,7 @@ import {
     SubmoduleGitHost,
 } from '@libs/sandbox/infrastructure/providers/submodule-fetch';
 import { sedLineRange } from '@libs/sandbox/infrastructure/providers/read-within-root';
+import { hasParentDirSegment } from '@libs/sandbox/infrastructure/providers/path-segments';
 
 const execFileAsync = promisify(execFile);
 
@@ -71,10 +76,10 @@ const MAX_BUFFER = 5 * 1024 * 1024; // 5 MB — cap output to prevent memory iss
  * outright for every traversing reader.
  */
 const DANGEROUS_FLAGS: Record<string, RegExp> = {
-    find: /^-(exec|execdir|ok|okdir|delete|fprint|fprintf|fprint0|fls|L|H|follow)$/,
-    fd: /^(-x|-X|--exec|--exec-batch|-L|--follow)$/,
-    grep: /^(-R|--dereference-recursive|--dereference)$/,
-    sg: /^(-U|--update-all|--follow)$/,
+    'find': /^-(exec|execdir|ok|okdir|delete|fprint|fprintf|fprint0|fls|L|H|follow)$/,
+    'fd': /^(-x|-X|--exec|--exec-batch|-L|--follow)$/,
+    'grep': /^(-R|--dereference-recursive|--dereference)$/,
+    'sg': /^(-U|--update-all|--follow)$/,
     'ast-grep': /^(-U|--update-all|--follow)$/,
 };
 
@@ -90,9 +95,9 @@ const DANGEROUS_FLAGS: Record<string, RegExp> = {
  * cluster short flags, so it has no entry and keeps its exact match above.
  */
 const DANGEROUS_SHORT_FLAGS: Record<string, Set<string>> = {
-    fd: new Set(['x', 'X', 'L']),
-    grep: new Set(['R']),
-    sg: new Set(['U']),
+    'fd': new Set(['x', 'X', 'L']),
+    'grep': new Set(['R']),
+    'sg': new Set(['U']),
     'ast-grep': new Set(['U']),
 };
 
@@ -112,6 +117,15 @@ const GIT_REPOSITORY_ENV = [
     'GIT_COMMON_DIR',
     'GIT_NAMESPACE',
 ];
+
+/**
+ * Whether a `relative(root, x)` result leaves the root: `..` itself, a `../`
+ * prefix, or another drive or root (an absolute result). A name that only
+ * starts with dots (`..hidden`, `...`) stays inside.
+ */
+function escapesRoot(rel: string): boolean {
+    return rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+}
 
 /** `process.env` plus `extra`, without the variables that relocate git. */
 export function sandboxEnv(
@@ -458,6 +472,7 @@ export class LocalSandboxService implements ISandboxProvider {
                 pattern: string,
                 path: string,
                 glob?: string,
+                options?: RepositoryGrepOptions,
             ): Promise<string> => {
                 await this.resolveSafePath(repoDir, path);
 
@@ -469,7 +484,10 @@ export class LocalSandboxService implements ISandboxProvider {
                     '--no-heading',
                     '-n',
                     '--no-follow',
+                    // rg lets the later glob win: the language include goes
+                    // first, so the scan's excludes still apply to it.
                     ...(glob ? ['--glob', glob] : []),
+                    ...repositoryGrepArgs(options),
                     '-e',
                     pattern,
                     '--',
@@ -1081,7 +1099,7 @@ export class LocalSandboxService implements ISandboxProvider {
      */
     private isPathInside(root: string, child: string): boolean {
         const rel = relative(root, child);
-        return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+        return rel === '' || !escapesRoot(rel);
     }
 
     /**
@@ -1123,7 +1141,7 @@ export class LocalSandboxService implements ISandboxProvider {
         const rel = relative(repoReal, safePath);
         // safePath was validated to live inside repoReal, so `rel` never
         // escapes; guard defensively anyway.
-        if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+        if (rel === '' || escapesRoot(rel)) {
             throw new Error(`Path escapes repo boundary: ${safePath}`);
         }
         const parts = rel.split(sep).filter((p) => p.length > 0);
@@ -1167,9 +1185,9 @@ export class LocalSandboxService implements ISandboxProvider {
     }
 
     private validatePath(path: string, repoDir?: string): void {
-        // Check for .. traversal FIRST, before any absolute-path logic,
+        // Check for a ".." segment FIRST, before any absolute-path logic,
         // so paths like /repo/../../../etc/passwd are always rejected.
-        if (path.includes('..')) {
+        if (hasParentDirSegment(path)) {
             throw new Error('Path traversal using ".." is not allowed');
         }
         // `isAbsolute` (not `startsWith('/')`) so a Windows absolute path like
@@ -1253,9 +1271,7 @@ export class LocalSandboxService implements ISandboxProvider {
             // of not re-validating repoDir itself.
             const parentRel = relative(repoDir, parent);
             const parentStrictlyInside =
-                parentRel !== '' &&
-                !parentRel.startsWith('..') &&
-                !isAbsolute(parentRel);
+                parentRel !== '' && !escapesRoot(parentRel);
             if (parent === current || !parentStrictlyInside) {
                 break;
             }

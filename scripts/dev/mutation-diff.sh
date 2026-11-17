@@ -57,7 +57,7 @@ UNREACHED_PATH="reports/mutation/unreached.json"
 rm -f "$UNREACHED_PATH"
 record_unreached() {
     mkdir -p "${UNREACHED_PATH%/*}"
-    node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify(process.argv.slice(2)))' "$UNREACHED_PATH" "$@"
+    node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify([...new Set(process.argv.slice(2).filter(Boolean))]))' "$UNREACHED_PATH" "$@"
 }
 
 echo "[mutation:diff] Mutating ${#FILES[@]} changed file(s) vs ${MERGE_BASE}:"
@@ -119,6 +119,13 @@ if [ -z "${SPECS[0]-}" ]; then
     record_unreached "${FILES[@]}"
     exit 0
 fi
+
+# This job starts no database. Integration specs that need one skip themselves
+# under this opt-out (Postgres: describe.skip; Mongo: resolveMongoTestGate,
+# which otherwise throws on import in CI and fails the dry run), while the ones
+# that need none still run. Forced, not defaulted: Stryker's concurrent runners
+# would share one test database.
+export SKIP_INTEGRATION=true
 
 # Emit the spec list as a JSON array for jest.stryker.config.ts (node does the
 # quoting so a path with odd characters can't corrupt it).

@@ -11,7 +11,10 @@ import {
     CustomAgentCliProvisioning,
     provisionCustomAgentClis,
 } from '@libs/code-review/infrastructure/agents/custom-agent-cli/custom-agent-cli.provisioner';
-import { ignoredFilesForCustomAgents } from '@libs/code-review/infrastructure/agents/custom-agents/custom-agent-scope';
+import {
+    ignoredFilesForCustomAgents,
+    selectCustomAgents,
+} from '@libs/code-review/infrastructure/agents/custom-agents/custom-agent-scope';
 
 import {
     ISandboxLeaseManager,
@@ -171,6 +174,9 @@ export class CreateSandboxStage extends BasePipelineStage<CodeReviewPipelineCont
                     checkoutSha: cloneInfo.checkoutSha,
                     unifiedDiff: cliContext?.cliRawDiff,
                     sandboxMetadata: { stage: 'review' },
+                    organizationId:
+                        context.organizationAndTeamData?.organizationId,
+                    teamId: context.organizationAndTeamData?.teamId,
                 },
                 // A review waits for capacity as long as its job lives
                 { signal: context.parentSignal },
@@ -231,6 +237,9 @@ export class CreateSandboxStage extends BasePipelineStage<CodeReviewPipelineCont
                         checkoutSha: freshCloneInfo.checkoutSha,
                         unifiedDiff: cliContext?.cliRawDiff,
                         sandboxMetadata: { stage: 'agent-review-renewed' },
+                        organizationId:
+                            context.organizationAndTeamData?.organizationId,
+                        teamId: context.organizationAndTeamData?.teamId,
                     };
                 };
             });
@@ -321,7 +330,11 @@ export class CreateSandboxStage extends BasePipelineStage<CodeReviewPipelineCont
         sandbox: SandboxInstance,
         skipReason?: string,
     ): Promise<CustomAgentCliProvisioning | undefined> {
-        const agents = context.codeReviewConfig?.customAgents ?? [];
+        const agents = selectCustomAgents(
+            context.codeReviewConfig?.customAgents,
+            context.onlyCustomAgent,
+            context.riskAssessment,
+        );
         if (
             !agents.some(
                 (agent) =>
@@ -346,6 +359,7 @@ export class CreateSandboxStage extends BasePipelineStage<CodeReviewPipelineCont
                 sandbox,
                 agents,
                 onlyCustomAgent: context.onlyCustomAgent,
+                riskAssessment: context.riskAssessment,
                 skipReason,
                 changedFiles: (context.changedFiles ?? [])
                     .map((file) => file?.filename)

@@ -230,12 +230,50 @@ async function main() {
                 '--gate',
             ],
         },
+        {
+            name: 'pr-risk',
+            result: 'shared',
+            model: true,
+            args: ['evals/pr-risk/run.js', '--model=eval-fake', '--gate'],
+        },
+        {
+            name: 'approval-risk-shared',
+            result: 'shared',
+            model: true,
+            args: ['evals/approval-risk/run.js', '--model=eval-fake', '--set=full-balanced', '--compare-shared', '--ids=pylint-dev/pylint#7537'],
+        },
         // The cases bring their repository: the scripted model reads it through the local sandbox.
         {
             name: 'memories',
             result: 'shared',
             model: true,
             args: ['evals/memories/run.js', '--model=eval-fake', '--gate'],
+        },
+        // The security scan's engine over a repository written for it: map,
+        // lenses, verify and finalize reach the scripted model; nothing ships.
+        {
+            name: 'security-scan',
+            result: 'shared',
+            model: true,
+            // Exercise CI's key-free startup even on a configured dev machine.
+            env: {
+                API_CRYPTO_KEY: '',
+                DOTENV_CONFIG_PATH: process.platform === 'win32' ? 'NUL' : '/dev/null',
+            },
+            check: ({ result, verdictPrompts }) => {
+                const droveLenses = result?.cases?.length && result.cases.every(c =>
+                    c.coverage?.done > 0 && Object.entries(c.coverage.modelCalls ?? {}).some(([name, count]) =>
+                        /^security-scan-(authz|injection|ssrf|data_exposure|secret_identity|misconfiguration|resource_exhaustion)$/.test(name) && count > 0));
+                if (!droveLenses) return `scan reached no completed lens unit: ${JSON.stringify(result?.cases?.map(c => c.coverage))}`;
+                if (!verdictPrompts.length) return 'scan reached no verifier';
+                return null;
+            },
+            args: [
+                'evals/security-scan/run.js',
+                '--model=eval-fake',
+                '--set=wiring',
+                '--budget=1',
+            ],
         },
         // Each team's custom agents through production's stage on a repository
         // written for it: the gate holds what the review hands every agent (its
@@ -352,11 +390,14 @@ async function main() {
             check: () => {
                 const findings =
                     readJson(heavyOut)?.rows?.[0]?.metadata?.findings;
-                const dump = readJson(path.join(heavyDump, `${FINDER_CASE}.raw.txt`));
+                const dump = readJson(
+                    path.join(heavyDump, `${FINDER_CASE}.raw.txt`),
+                );
                 const lenses = (dump?.finderPasses || [])
                     .flatMap((run) => run.passes || [])
                     .filter((p) => String(p.label).startsWith('lens-')).length;
-                if (!lenses) return 'expected the heavy review to run its lenses, got none';
+                if (!lenses)
+                    return 'expected the heavy review to run its lenses, got none';
                 return findings >= 1
                     ? null
                     : `expected the scripted finding to reach scoring, got findings=${findings}`;
@@ -447,6 +488,12 @@ async function main() {
             result: 'shared',
             model: true,
             args: ['evals/pr-summary/run.js', '--model=eval-fake', '--gate'],
+        },
+        {
+            name: 'implementation-check',
+            result: 'shared',
+            model: true,
+            args: ['evals/implementation-check/run.js', '--model=eval-fake', '--limit=3'],
         },
         {
             name: 'reference-detection',
@@ -580,6 +627,7 @@ async function main() {
         else if (step.check) {
             problem = step.check({
                 models,
+                result: readJson(resultFile),
                 verdictPrompts:
                     server.stats.verdictPrompts.slice(verdictsBefore),
                 finderToolResults:
