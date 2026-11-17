@@ -86,6 +86,17 @@ export const ByokModelSelect = ({
         setManual(null);
     }
     const manual = manualOverride ?? autoManual;
+    // The picker's manual row passes the id typed in its search box, so the
+    // manual input opens with it instead of empty.
+    const switchToManual = (typed?: string) => {
+        if (typed) {
+            form.setValue("model", typed, {
+                shouldDirty: true,
+                shouldValidate: true,
+            });
+        }
+        setManual(true);
+    };
 
     // In use in Routing → the model identity is frozen. Show it read-only with a
     // hint pointing at where to change it, instead of the editable picker.
@@ -111,17 +122,12 @@ export const ByokModelSelect = ({
                 credentialStored={credentialStored}
                 credentialId={credentialId}
                 requiresBaseUrl={foundProvider.requiresBaseUrl ?? false}
-                onUseManual={() => setManual(true)}
+                onUseManual={switchToManual}
             />
         );
     }
 
-    return (
-        <ModelSelect
-            excludeIds={excludeIds}
-            onUseManual={() => setManual(true)}
-        />
-    );
+    return <ModelSelect excludeIds={excludeIds} onUseManual={switchToManual} />;
 };
 
 // Exported lightweight manual input for external fallbacks
@@ -229,7 +235,7 @@ const ModelPickerPopover = ({
     onUseManual,
 }: {
     models: LLMProviderModel[];
-    onUseManual?: () => void;
+    onUseManual?: (typed?: string) => void;
 }) => {
     const form = useFormContext<EditKeyForm>();
     const [open, setOpen] = useState(false);
@@ -237,7 +243,15 @@ const ModelPickerPopover = ({
     const { reset: resetErrorBoundary } = useQueryErrorResetBoundary();
 
     return (
-        <Popover modal open={open} onOpenChange={setOpen}>
+        <Popover
+            modal
+            open={open}
+            onOpenChange={(next) => {
+                setOpen(next);
+                // A closed picker must not leave its filter text behind for the
+                // manual row to pick up the next time it opens.
+                if (!next) setSearch("");
+            }}>
             <Controller
                 name="model"
                 control={form.control}
@@ -281,6 +295,10 @@ const ModelPickerPopover = ({
                 className="w-[var(--radix-popover-trigger-width)] p-0">
                 <Command
                     filter={(value, search) => {
+                        // The manual-entry row is not a model: keep it so an id
+                        // the list does not carry can still be entered.
+                        if (value === "__manual__") return 1;
+
                         const repository = models.find((r) => r.id === value);
 
                         if (!repository) return 0;
@@ -329,6 +347,7 @@ const ModelPickerPopover = ({
                                     });
 
                                     resetErrorBoundary();
+                                    setSearch("");
                                     setOpen(false);
                                 }}>
                                 <span className="flex min-w-0 flex-col gap-0.5">
@@ -361,7 +380,8 @@ const ModelPickerPopover = ({
                             key="__manual__"
                             value="__manual__"
                             onSelect={() => {
-                                onUseManual?.();
+                                onUseManual?.(search.trim());
+                                setSearch("");
                                 setOpen(false);
                             }}>
                             <span>
@@ -385,7 +405,7 @@ const ModelSelect = ({
     onUseManual,
     excludeIds = [],
 }: {
-    onUseManual?: () => void;
+    onUseManual?: (typed?: string) => void;
     excludeIds?: string[];
 }) => {
     const form = useFormContext<EditKeyForm>();
@@ -437,7 +457,7 @@ const ModelSelectLive = ({
     credentialId,
     requiresBaseUrl = false,
 }: {
-    onUseManual?: () => void;
+    onUseManual?: (typed?: string) => void;
     excludeIds?: string[];
     credentialStored: boolean;
     credentialId?: string;
@@ -542,7 +562,7 @@ const ModelSelectLive = ({
                         variant="tertiary"
                         size="xs"
                         className="mt-2"
-                        onClick={onUseManual}>
+                        onClick={() => onUseManual()}>
                         Type model manually
                     </Button>
                 )}
@@ -576,7 +596,7 @@ const ModelSelectLive = ({
                         variant="tertiary"
                         size="xs"
                         className="mt-2"
-                        onClick={onUseManual}>
+                        onClick={() => onUseManual()}>
                         Type model manually
                     </Button>
                 )}
