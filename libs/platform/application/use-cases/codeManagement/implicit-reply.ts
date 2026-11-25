@@ -50,237 +50,19 @@ export interface ThreadMessage extends ReplyThreadMessage {
 }
 
 const BOT_LOGIN_PATTERN = /\[bot\]$|(^|[_-])bot([_-]|$)/i;
-const MAX_CLOSURE_SCAN_CHARS = 8_000;
-const BARE_URL_PATTERN = /https?:\/\/[^\s)>\]]+/g;
-const RESPONSE_REQUEST_PATTERN =
-    /\b(?:please\s+(?:re-?check|check|verify|confirm|review|explain|clarify)|re-?check\s+(?:this|the|again)|re-?review|re-?evaluate|verify\s+(?:this|the)|confirm\s+(?:this|the)|explain|clarify|elaborate|show\s+me|tell\s+me|suggest|help\s+me|can\s+you|could\s+you|would\s+you|do\s+you\s+agree|why\s+(?:would|does|did|is|are)|thoughts|wdyt|ptal|take\s+(?:a|another)\s+look|let\s+me\s+know|still\s+(?:red|fails?|failing|broken|flaky|unresolved|happening|occurs?|occurring|leaks?|leaking|see|seeing|hit|hitting|getting|throws?|throwing|crashes?|crashing)|(?:fails?|failing|broken|red)\s+again|ci\s+is\s+(?:red|failing|broken)|doesn['’]t\s+work|does\s+not\s+work|didn['’]t\s+fix|not\s+working|how\s+should|should\s+we|what\s+about)\b|(?:^|[.!\n][ \t]*(?:[-*+][ \t]+)?)[*_~]*(?:check|verify|confirm|review|look\s+at)(?![A-Za-z0-9])/i;
-const TERMINAL_CLOSURE_PATTERN =
-    /^(?:(?:declining|declined|won['’]t\s+fix|wontfix|not\s+fixing|not\s+changing|skipping|leaving\s+as[- ]is|by\s+design|intentional|working\s+as\s+intended|out\s+of\s+scope|no\s+changes?\s+needed|closing\s+as|resolving\s+as)(?:\b|[:.,!—–-]|$)|(?:(?:good\s+catch[.,!]?\s+)?(?:fixed|addressed|resolved|done|applied|updated|removed|reverted|switched|changed|tightened|added|implemented)(?:\s+(?:in|by|with|on|via)\b|[:.,!—–-]|$))|(?:(?:thanks|thank\s+you|ty|thx|makes\s+sense|lgtm|good\s+catch|noted|acknowledged|got\s+it)[.,!]?$))/i;
-
-function isEscaped(text: string, index: number): boolean {
-    let slashes = 0;
-    for (let i = index - 1; i >= 0 && text[i] === '\\'; i--) {
-        slashes++;
-    }
-    return slashes % 2 === 1;
-}
-
-function isAtLineStart(text: string, index: number): boolean {
-    let i = index - 1;
-    let spaces = 0;
-    while (i >= 0 && text[i] === ' ') {
-        spaces++;
-        i--;
-    }
-    return spaces <= 3 && (i < 0 || text[i] === '\n');
-}
-
-function isOpeningFenceLine(
-    text: string,
-    index: number,
-    ticks: number,
-): boolean {
-    for (let i = index + ticks; i < text.length; i++) {
-        const ch = text[i];
-        if (ch === '\n' || ch === '\r') return true;
-        if (ch === '`') return false;
-    }
-    return true;
-}
-
-function isClosingFenceLine(
-    text: string,
-    index: number,
-    ticks: number,
-): boolean {
-    let i = index + ticks;
-    while (i < text.length && (text[i] === ' ' || text[i] === '\t')) {
-        i++;
-    }
-    return i >= text.length || text[i] === '\n' || text[i] === '\r';
-}
+const MAX_CLOSURE_CHARS = 240;
+const STANDALONE_CLOSURE_PATTERN =
+    /^(?:good\s+catch|thanks|thank\s+you|ty|thx|makes\s+sense|lgtm|sgtm|noted|acknowledged|got\s+it|done|fixed|addressed|resolved|applied|updated|removed|reverted|declined|declining|won['’]t\s+fix|wontfix|not\s+fixing|not\s+changing(?:\s+this)?|skipping|skipped|leaving\s+as[- ]is|by\s+design|intentional|working\s+as\s+intended|out\s+of\s+scope|no\s+changes?\s+needed)[.,!]?$/i;
+const REF_CLOSURE_PATTERN =
+    /^(?:(?:good\s+catch|thanks|thank\s+you)[.,!]?\s+)?(?:(?:fixed|addressed|resolved|done|applied|updated|removed|reverted|implemented|tracked|deferred)\s+(?:in|by|via|to)\s+(?:(?:the\s+)?(?:latest|last|follow[- ]up)\s+)?(?:(?:commit|pr|pull\s+request|issue|push)\s+)?`?[A-Za-z0-9#/_.-]+`?|(?:out\s+of\s+scope|deferred|declining|declined|won['’]t\s+fix|wontfix|by\s+design|intentional)(?::\s*|,\s+|\s+[—–-]\s+|\s+)(?:tracked\s+in|see|per)\s+`?[A-Za-z0-9#/_.-]+`?)[.,!]?$/i;
 
 /**
- * Strictly O(n) pass over a bounded prefix that removes HTML comments outside
- * backtick spans and optionally replaces backtick code spans with spaces.
- * Pre-indexes backtick runs in one pass so delimiter matching never rescans
- * suffixes. Follows CommonMark: only line-start fences (`>= 3` ticks) cross
- * blank lines and close on any line-start fence of `>= ticks`, and a backslash
- * escapes only the single opening backtick in prose.
+ * Strips leading markdown quote blocks (such as GitHub `> [!NOTE]` agent
+ * banners) so the author's actual note can be checked. Returns empty when the
+ * reply contains only quotes or whitespace.
  */
-function scanMarkdownText(raw: string, stripCodeSpans: boolean): string {
-    const text = raw.slice(0, MAX_CLOSURE_SCAN_CHARS);
-    const len = text.length;
-
-    const runsByLen = new Map<number, Array<{ pos: number; para: number }>>();
-    const closingFences: Array<{ pos: number; ticks: number }> = [];
-    const allRuns: Array<{
-        pos: number;
-        ticks: number;
-        para: number;
-        escaped: boolean;
-        atLineStart: boolean;
-    }> = [];
-    const pushBucket = (
-        ticks: number,
-        entry: { pos: number; para: number },
-    ) => {
-        let bucket = runsByLen.get(ticks);
-        if (!bucket) {
-            bucket = [];
-            runsByLen.set(ticks, bucket);
-        }
-        bucket.push(entry);
-    };
-
-    let para = 0;
-    for (let i = 0; i < len; ) {
-        if (text[i] === '\n') {
-            let j = i + 1;
-            while (
-                j < len &&
-                (text[j] === ' ' || text[j] === '\t' || text[j] === '\r')
-            ) {
-                j++;
-            }
-            if (j < len && text[j] === '\n') {
-                para++;
-                i = j;
-                continue;
-            }
-            i++;
-            continue;
-        }
-        if (text[i] === '`') {
-            const escaped = isEscaped(text, i);
-            const atLineStart = isAtLineStart(text, i);
-            let ticks = 1;
-            while (i + ticks < len && text[i + ticks] === '`') {
-                ticks++;
-            }
-            pushBucket(ticks, { pos: i, para });
-            if (
-                !escaped &&
-                atLineStart &&
-                ticks >= 3 &&
-                isClosingFenceLine(text, i, ticks)
-            ) {
-                closingFences.push({ pos: i, ticks });
-            }
-            allRuns.push({ pos: i, ticks, para, escaped, atLineStart });
-            if (escaped && ticks > 1) {
-                allRuns.push({
-                    pos: i + 1,
-                    ticks: ticks - 1,
-                    para,
-                    escaped: false,
-                    atLineStart: false,
-                });
-            }
-            i += ticks;
-            continue;
-        }
-        i++;
-    }
-
-    const bucketPtr = new Map<number, number>();
-    let fenceIdx = 0;
-    let runIdx = 0;
-    let nextComment = text.indexOf('<!--');
-    let out = '';
-    let cursor = 0;
-
-    while (cursor < len) {
-        if (nextComment >= 0 && nextComment < cursor) {
-            nextComment = text.indexOf('<!--', cursor);
-        }
-        while (runIdx < allRuns.length && allRuns[runIdx].pos < cursor) {
-            runIdx++;
-        }
-        const nextRun = runIdx < allRuns.length ? allRuns[runIdx] : undefined;
-
-        if (cursor === nextComment) {
-            const close = text.indexOf('-->', cursor + 4);
-            if (close < 0) {
-                break;
-            }
-            cursor = close + 3;
-            continue;
-        }
-
-        if (nextRun && cursor === nextRun.pos) {
-            const { ticks, para: openPara, escaped, atLineStart } = nextRun;
-            if (escaped) {
-                out += text[cursor];
-                cursor += 1;
-                continue;
-            }
-            if (
-                ticks >= 3 &&
-                atLineStart &&
-                isOpeningFenceLine(text, cursor, ticks)
-            ) {
-                while (
-                    fenceIdx < closingFences.length &&
-                    closingFences[fenceIdx].pos <= cursor
-                ) {
-                    fenceIdx++;
-                }
-                let matchIdx = fenceIdx;
-                while (
-                    matchIdx < closingFences.length &&
-                    closingFences[matchIdx].ticks < ticks
-                ) {
-                    matchIdx++;
-                }
-                if (matchIdx < closingFences.length) {
-                    const closer = closingFences[matchIdx];
-                    fenceIdx = matchIdx + 1;
-                    out += stripCodeSpans
-                        ? ' '
-                        : text.slice(cursor, closer.pos + closer.ticks);
-                    cursor = closer.pos + closer.ticks;
-                    continue;
-                }
-            }
-            const bucket = runsByLen.get(ticks);
-            if (bucket) {
-                let ptr = bucketPtr.get(ticks) ?? 0;
-                while (ptr < bucket.length && bucket[ptr].pos <= cursor) {
-                    ptr++;
-                }
-                bucketPtr.set(ticks, ptr);
-                const closer = bucket[ptr];
-                if (closer && closer.para === openPara) {
-                    bucketPtr.set(ticks, ptr + 1);
-                    out += stripCodeSpans
-                        ? ' '
-                        : text.slice(cursor, closer.pos + ticks);
-                    cursor = closer.pos + ticks;
-                    continue;
-                }
-            }
-            out += text.slice(cursor, cursor + ticks);
-            cursor += ticks;
-            continue;
-        }
-
-        let next = len;
-        if (nextRun && nextRun.pos < next) next = nextRun.pos;
-        if (nextComment >= 0 && nextComment < next) next = nextComment;
-        out += text.slice(cursor, next);
-        cursor = next;
-    }
-
-    return out;
-}
-
-/**
- * Leading markdown quote blocks (such as GitHub `> [!NOTE]` banners) and
- * formatting prefixes are stripped so the first real sentence is inspected.
- */
-function stripLeadingQuoteBanners(cleaned: string): string {
-    const lines = cleaned.split(/\r?\n/);
+function stripLeadingQuoteBanners(raw: string): string {
+    const lines = raw.split(/\r?\n/);
     let index = 0;
     while (index < lines.length) {
         const trimmed = lines[index].trim();
@@ -290,38 +72,26 @@ function stripLeadingQuoteBanners(cleaned: string): string {
         }
         break;
     }
-    const rest = (index < lines.length ? lines.slice(index) : lines)
-        .join('\n')
-        .trim();
-    return rest.replace(/^[\s>*_~-]+/, '').trim();
+    if (index >= lines.length) {
+        return '';
+    }
+    return lines.slice(index).join('\n').trim();
 }
 
 /**
- * True when an unmentioned reply is a one-way closure or status note
- * ("Fixed in abc123", "Declining: ...", "Not changing this.", "Thanks.") that
- * does not ask a question or request a re-check.
+ * True only for unambiguous, single-line closure or acknowledgment notes
+ * ("Fixed in `cb01ad78`.", "Addressed in commit abc1234.", "Thanks!",
+ * "Out of scope, tracked in #93."). Any reply with extra sentences or
+ * potentially actionable prose fails open to the classifier.
  */
 export function isTerminalClosureNote(body: string): boolean {
-    const raw = body ?? '';
-    // Long replies fail open to the classifier so tail questions are never truncated.
-    if (raw.length > MAX_CLOSURE_SCAN_CHARS) {
+    const text = stripLeadingQuoteBanners(body ?? '');
+    if (!text || text.length > MAX_CLOSURE_CHARS || text.includes('\n')) {
         return false;
     }
-    const lead = stripLeadingQuoteBanners(scanMarkdownText(raw, false));
-    if (!lead) {
-        return false;
-    }
-    const prose = stripLeadingQuoteBanners(scanMarkdownText(raw, true)).replace(
-        BARE_URL_PATTERN,
-        (match) => {
-            const trailing = match.match(/[?.!]+$/);
-            return trailing ? ` ${trailing[0]}` : ' ';
-        },
+    return (
+        STANDALONE_CLOSURE_PATTERN.test(text) || REF_CLOSURE_PATTERN.test(text)
     );
-    if (prose.includes('?') || RESPONSE_REQUEST_PATTERN.test(prose)) {
-        return false;
-    }
-    return TERMINAL_CLOSURE_PATTERN.test(lead);
 }
 
 /**

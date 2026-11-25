@@ -199,13 +199,8 @@ describe('ChatWithKodyFromGitUseCase — replies without @kody (#1946)', () => {
             expect(conversationAgentUseCase.execute).not.toHaveBeenCalled();
         });
 
-        it('stays quiet without calling the classifier on one-way closure notes', async () => {
-            const reply = githubReply(
-                900,
-                'Fixed in `cb01ad78`. Updated the query.',
-                'dev-one',
-                1,
-            );
+        it('stays quiet without calling the classifier on unambiguous closure notes', async () => {
+            const reply = githubReply(900, 'Fixed in `cb01ad78`.', 'dev-one', 1);
             const { useCase, conversationAgentUseCase, codeManagementService } =
                 setup([githubKodyRoot, reply]);
 
@@ -216,6 +211,25 @@ describe('ChatWithKodyFromGitUseCase — replies without @kody (#1946)', () => {
             expect(
                 codeManagementService.createResponseToComment,
             ).not.toHaveBeenCalled();
+        });
+
+        it('passes closure prefixes with follow-up prose to the classifier', async () => {
+            classify.mockResolvedValue(true);
+            const reply = githubReply(
+                900,
+                'Fixed in abc1234. Recheck it now.',
+                'dev-one',
+                1,
+            );
+            const { useCase, conversationAgentUseCase } = setup([
+                githubKodyRoot,
+                reply,
+            ]);
+
+            await useCase.execute(githubParams(reply));
+
+            expect(classify).toHaveBeenCalled();
+            expect(conversationAgentUseCase.execute).toHaveBeenCalled();
         });
 
         it('stays quiet without calling the classifier when GitHub reports the thread resolved', async () => {

@@ -350,62 +350,40 @@ describe('implicitReplyGate — terminal closure and resolved threads', () => {
     });
 
     it.each([
-        'Fixed in `cb01ad78`. Updated the parser.',
+        'Fixed in `cb01ad78`.',
         'Addressed in commit abc1234.',
-        'Declining: out of scope for this PR.',
-        'Not changing this. The workflow already enforces the scalar form.',
-        '> [!NOTE]\n> **Agent responding on behalf of Artic0din**\n\nFixed in `f2283d27`. Replaced busy flag.',
-        '> [!NOTE]\n> **Agent**\n\nDeclining for this PR as intentional by design.',
-        'Good catch, fixed in abc1234 (see https://example.com?id=1).',
-        'Fixed in abc1234 with stray ` backtick <!-- hidden? --> and ``code?``.',
-        'Fixed in abc1234. Escaped \\``stray double tick without a single tick.',
+        'Good catch, fixed in abc1234.',
+        'Not changing this.',
+        'Done.',
         'Thanks!',
+        "Won't fix.",
         'Out of scope, tracked in #93.',
-    ])('silences one-way closure note: %s', (body) => {
+        'Declining: see #84.',
+        '> [!NOTE]\n> **Agent responding on behalf of Artic0din**\n\nFixed in `f2283d27`.',
+    ])('silences unambiguous closure note: %s', (body) => {
         expect(isTerminalClosureNote(body)).toBe(true);
         expect(implicitReplyGate([kody, reply(body)])).toBe('terminal_closure');
     });
 
     it.each([
+        'Fixed in abc1234. Recheck it now.',
+        'Fixed in abc1234. Please run the tests again.',
+        'Fixed in abc1234, but the tests fail with a timeout.',
         'Fixed in abc1234 — can you recheck this?',
         'Fixed in abc1234, does this cover the nil case?',
-        'Fixed in abc1234. Is this the right [endpoint](https://example.com/api)?',
-        'Fixed in abc1234. Check https://example.com/api?',
+        'Fixed in `cb01ad78`. Updated the parser.',
+        'Declining: out of scope for this PR.',
         'Declining: why would this ever race?',
         'Not changing this. Explain how this can race.',
         'Fixed in abc1234. The tests are still red.',
-        'Fixed in abc1234. Check whether the retry still leaks the lock.',
         'Fixed in abc1234\nCheck whether the retry releases the lock',
-        'Fixed in abc1234\n- Check whether the retry releases the lock',
         'Fixed in abc1234\n- **Check** whether the retry releases the lock',
-        'Fixed in abc1234\n- __Check__ whether this covers retries',
-        'Fixed in abc1234\n_Check_ whether this covers retries',
-        'Fixed in abc1234 with stray ` backtick.\n\nCan you check whether this works? See `parser`.',
-        'Fixed in abc1234 with stray ` backtick.\n   \nCan you recheck the lock? See `parser`.',
-        'Fixed in abc1234 with inline ``` ticks.\n\nCan you recheck the lock? See ```parser```.',
-        'Fixed in abc1234 for `C:\\`. Can you recheck the lock? I used `parser`.',
-        'Fixed in abc1234. Escaped \\``foo`. Can you recheck the lock? See `bar`.',
-        'Fixed in abc1234.\n```js\nconst x = 1;\n````\nCan you recheck this?\n```js\nconst y = 2;\n```',
-        'Fixed in abc1234.\n```parser```\nCan you recheck this?\n```js\nconst y = 2;\n```',
-        `Fixed in abc1234.\n${'a'.repeat(8_200)}\nCan you recheck this?`,
-        'Fixed in abc1234. Escaped \\`Please verify this\\` in prose.',
-        'Fixed in abc1234. CI is failing again.',
-        'Fixed in abc1234. Escaped the `<!--` opener. Can you recheck?',
-        'Fixed in abc1234. Escaped `` `<!-- ``. Can you recheck `parser`',
-        'Fixed in abc1234 but it still fails on Safari.',
-        'Fixed in abc1234, please verify this handles retries.',
+        '> Fixed in abc1234.',
         'the key is unique, so no',
         'why?',
-    ])('does not silence replies asking for a response: %s', (body) => {
+    ])('fails open to the classifier for extra prose or follow-up requests: %s', (body) => {
         expect(isTerminalClosureNote(body)).toBe(false);
         expect(implicitReplyGate([kody, reply(body)])).toBeUndefined();
-    });
-
-    it('stays linear on repeated unclosed HTML comment openers', () => {
-        const crafted = '<!--'.repeat(20_000) + 'Fixed in abc1234.';
-        const started = Date.now();
-        expect(isTerminalClosureNote(crafted)).toBe(false);
-        expect(Date.now() - started).toBeLessThan(100);
     });
 
     it('silences replies on already-resolved threads before checking body text', () => {
