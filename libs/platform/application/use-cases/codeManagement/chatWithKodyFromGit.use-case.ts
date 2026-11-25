@@ -2232,9 +2232,8 @@ export class ChatWithKodyFromGitUseCase {
     /**
      * Checks GitHub GraphQL review thread resolution when REST review comments
      * omit `isResolved`. Scoped to GitHub (`getPullRequestReviewThreads`
-     * returns `fullDatabaseId` matching the REST root comment id); Azure/GitLab
-     * carry status on their own thread payloads so cross-thread id collisions
-     * cannot happen. Fails open so transient API errors never drop a reply.
+     * returns `fullDatabaseId` matching the REST root comment id). Fails open
+     * with a warning log on API errors.
      */
     private async isImplicitThreadResolvedOnHost(params: {
         replyThread: ThreadMessage[] | undefined;
@@ -2272,7 +2271,20 @@ export class ChatWithKodyFromGitUseCase {
                 (t) => String(t?.fullDatabaseId ?? '') === target,
             );
             return match?.isResolved === true;
-        } catch {
+        } catch (error) {
+            this.logger.warn({
+                message:
+                    'Failed to check GitHub review thread resolution; continuing to classifier',
+                context: ChatWithKodyFromGitUseCase.name,
+                metadata: {
+                    repository: params.repository?.name,
+                    pullRequestNumber: params.pullRequestNumber,
+                    platformType: params.platformType,
+                    rootId: String(rootId),
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                },
+            });
             return false;
         }
     }
