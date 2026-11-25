@@ -76,7 +76,7 @@ function setup(inbox: any = fakeInbox()) {
         },
         {
             id: 21,
-            body: 'fixed, retry is bounded now',
+            body: 'why is the retry considered unbounded?',
             createdAt: '2026-09-28T19:01:00Z',
             discussionId: 'd1',
             originalCommit,
@@ -127,7 +127,7 @@ function setup(inbox: any = fakeInbox()) {
 
 // The same Note Hook body, as each of the project's hooks delivers it.
 const delivery = (
-    body = 'fixed, retry is bounded now',
+    body = 'why is the retry considered unbounded?',
     updatedAt = '2026-09-28 19:01:00 UTC',
 ) =>
     ({

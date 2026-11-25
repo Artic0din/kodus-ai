@@ -33,17 +33,66 @@ export const IMPLICIT_REPLY_THREAD_CAP = 10;
 export type ImplicitReplySilence =
     | 'not_kody_thread'
     | 'kody_author'
+    | 'resolved_thread'
+    | 'terminal_closure'
     | 'bot_cap'
     | 'thread_cap'
     | 'plan_blocked'
     | 'classified_no'
     | 'classifier_error';
 
+export interface ImplicitReplyGateOptions {
+    threadResolved?: boolean;
+}
+
 export interface ThreadMessage extends ReplyThreadMessage {
     id: string | number;
 }
 
 const BOT_LOGIN_PATTERN = /\[bot\]$|(^|[_-])bot([_-]|$)/i;
+const MAX_CLOSURE_CHARS = 240;
+const STANDALONE_CLOSURE_PATTERN =
+    /^(?:good\s+catch|thanks|thank\s+you|ty|thx|makes\s+sense|lgtm|sgtm|noted|acknowledged|got\s+it|done|fixed|addressed|resolved|applied|updated|removed|reverted|declined|declining|won['’]t\s+fix|wontfix|not\s+fixing|not\s+changing(?:\s+this)?|skipping|skipped|leaving\s+as[- ]is|by\s+design|intentional|working\s+as\s+intended|out\s+of\s+scope|no\s+changes?\s+needed)[.,!]?$/i;
+const REF_CLOSURE_PATTERN =
+    /^(?:(?:good\s+catch|thanks|thank\s+you)[.,!]?\s+)?(?:(?:fixed|addressed|resolved|done|applied|updated|removed|reverted|implemented|tracked|deferred)\s+(?:in|by|via|to)\s+(?:(?:the\s+)?(?:latest|last|follow[- ]up)\s+)?(?:(?:commit|pr|pull\s+request|issue|push)\s+)?`?[A-Za-z0-9#/_.-]+`?|(?:out\s+of\s+scope|deferred|declining|declined|won['’]t\s+fix|wontfix|by\s+design|intentional)(?::\s*|,\s+|\s+[—–-]\s+|\s+)(?:tracked\s+in|see|per)\s+`?[A-Za-z0-9#/_.-]+`?)[.,!]?$/i;
+
+/**
+ * Strips leading markdown quote blocks (such as GitHub `> [!NOTE]` agent
+ * banners) so the author's actual note can be checked. Returns empty when the
+ * reply contains only quotes or whitespace.
+ */
+function stripLeadingQuoteBanners(raw: string): string {
+    const lines = raw.split(/\r?\n/);
+    let index = 0;
+    while (index < lines.length) {
+        const trimmed = lines[index].trim();
+        if (!trimmed || trimmed.startsWith('>')) {
+            index++;
+            continue;
+        }
+        break;
+    }
+    if (index >= lines.length) {
+        return '';
+    }
+    return lines.slice(index).join('\n').trim();
+}
+
+/**
+ * True only for unambiguous, single-line closure or acknowledgment notes
+ * ("Fixed in `cb01ad78`.", "Addressed in commit abc1234.", "Thanks!",
+ * "Out of scope, tracked in #93."). Any reply with extra sentences or
+ * potentially actionable prose fails open to the classifier.
+ */
+export function isTerminalClosureNote(body: string): boolean {
+    const text = stripLeadingQuoteBanners(body ?? '');
+    if (!text || text.length > MAX_CLOSURE_CHARS || text.includes('\n')) {
+        return false;
+    }
+    return (
+        STANDALONE_CLOSURE_PATTERN.test(text) || REF_CLOSURE_PATTERN.test(text)
+    );
+}
 
 /**
  * Bot detection from what the platform exposes: GitHub's user type, GitLab's
@@ -67,6 +116,7 @@ export function isBotAuthor(author: {
  */
 export function implicitReplyGate(
     fullThread: ThreadMessage[] | undefined,
+    options?: ImplicitReplyGateOptions,
 ): ImplicitReplySilence | undefined {
     // The prompt reply Kody posts under a Bitbucket finding is part of the
     // finding, not an answer: it does not count toward either cap. The routed
@@ -85,6 +135,14 @@ export function implicitReplyGate(
 
     if (reply.isKody) {
         return 'kody_author';
+    }
+
+    if (options?.threadResolved) {
+        return 'resolved_thread';
+    }
+
+    if (isTerminalClosureNote(reply.body)) {
+        return 'terminal_closure';
     }
 
     if (

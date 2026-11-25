@@ -330,3 +330,65 @@ describe('implicitReplyGate — Bitbucket prompt reply', () => {
         ).toBe('thread_cap');
     });
 });
+
+describe('implicitReplyGate — terminal closure and resolved threads', () => {
+    const { implicitReplyGate, isTerminalClosureNote } =
+        jest.requireActual('./implicit-reply');
+    const kody: ThreadMessage = {
+        id: 1,
+        author: 'Kody',
+        isKody: true,
+        isBot: true,
+        body: 'Leak here. <!-- kody-codereview -->',
+    };
+    const reply = (body: string): ThreadMessage => ({
+        id: 2,
+        author: 'Artic0din',
+        isKody: false,
+        isBot: false,
+        body,
+    });
+
+    it.each([
+        'Fixed in `cb01ad78`.',
+        'Addressed in commit abc1234.',
+        'Good catch, fixed in abc1234.',
+        'Not changing this.',
+        'Done.',
+        'Thanks!',
+        "Won't fix.",
+        'Out of scope, tracked in #93.',
+        'Declining: see #84.',
+        '> [!NOTE]\n> **Agent responding on behalf of Artic0din**\n\nFixed in `f2283d27`.',
+    ])('silences unambiguous closure note: %s', (body) => {
+        expect(isTerminalClosureNote(body)).toBe(true);
+        expect(implicitReplyGate([kody, reply(body)])).toBe('terminal_closure');
+    });
+
+    it.each([
+        'Fixed in abc1234. Recheck it now.',
+        'Fixed in abc1234. Please run the tests again.',
+        'Fixed in abc1234, but the tests fail with a timeout.',
+        'Fixed in abc1234 — can you recheck this?',
+        'Fixed in abc1234, does this cover the nil case?',
+        'Fixed in `cb01ad78`. Updated the parser.',
+        'Declining: out of scope for this PR.',
+        'Declining: why would this ever race?',
+        'Not changing this. Explain how this can race.',
+        'Fixed in abc1234. The tests are still red.',
+        'Fixed in abc1234\nCheck whether the retry releases the lock',
+        'Fixed in abc1234\n- **Check** whether the retry releases the lock',
+        '> Fixed in abc1234.',
+        'the key is unique, so no',
+        'why?',
+    ])('fails open to the classifier for extra prose or follow-up requests: %s', (body) => {
+        expect(isTerminalClosureNote(body)).toBe(false);
+        expect(implicitReplyGate([kody, reply(body)])).toBeUndefined();
+    });
+
+    it('silences replies on already-resolved threads before checking body text', () => {
+        expect(
+            implicitReplyGate([kody, reply('why?')], { threadResolved: true }),
+        ).toBe('resolved_thread');
+    });
+});

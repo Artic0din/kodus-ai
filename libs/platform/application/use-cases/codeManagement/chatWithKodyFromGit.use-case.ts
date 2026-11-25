@@ -1226,6 +1226,18 @@ export class ChatWithKodyFromGitUseCase {
                 this.logImplicitReplySilence(silence, silenceContext);
                 return;
             }
+            if (
+                await this.isImplicitThreadResolvedOnHost({
+                    replyThread,
+                    organizationAndTeamData,
+                    repository,
+                    pullRequestNumber,
+                    platformType: params.platformType,
+                })
+            ) {
+                this.logImplicitReplySilence('resolved_thread', silenceContext);
+                return;
+            }
         } else if (this.shouldIgnoreComment(comment, params.platformType)) {
             this.logger.log({
                 message:
@@ -2215,6 +2227,66 @@ export class ChatWithKodyFromGitUseCase {
         platformType: PlatformType,
     ): ThreadMessage[] | undefined {
         return buildReplyThread(comment, allComments, platformType);
+    }
+
+    /**
+     * Checks GitHub GraphQL review thread resolution when REST review comments
+     * omit `isResolved`. Scoped to GitHub (`getPullRequestReviewThreads`
+     * returns `fullDatabaseId` matching the REST root comment id). Fails open
+     * with a warning log on API errors.
+     */
+    private async isImplicitThreadResolvedOnHost(params: {
+        replyThread: ThreadMessage[] | undefined;
+        organizationAndTeamData: OrganizationAndTeamData;
+        repository: Repository;
+        pullRequestNumber: number;
+        platformType: PlatformType;
+    }): Promise<boolean> {
+        if (params.platformType !== PlatformType.GITHUB) {
+            return false;
+        }
+        const rootId = params.replyThread?.[0]?.id;
+        if (
+            rootId == null ||
+            typeof this.codeManagementService.getPullRequestReviewThreads !==
+                'function'
+        ) {
+            return false;
+        }
+        try {
+            const threads =
+                await this.codeManagementService.getPullRequestReviewThreads(
+                    {
+                        organizationAndTeamData: params.organizationAndTeamData,
+                        repository: params.repository,
+                        prNumber: params.pullRequestNumber,
+                    },
+                    params.platformType,
+                );
+            if (!Array.isArray(threads)) {
+                return false;
+            }
+            const target = String(rootId);
+            const match = threads.find(
+                (t) => String(t?.fullDatabaseId ?? '') === target,
+            );
+            return match?.isResolved === true;
+        } catch (error) {
+            this.logger.warn({
+                message:
+                    'Failed to check GitHub review thread resolution; continuing to classifier',
+                context: ChatWithKodyFromGitUseCase.name,
+                metadata: {
+                    repository: params.repository?.name,
+                    pullRequestNumber: params.pullRequestNumber,
+                    platformType: params.platformType,
+                    rootId: String(rootId),
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                },
+            });
+            return false;
+        }
     }
 
     /** Runs the classifier; any failure means silence (fail closed). */

@@ -199,6 +199,85 @@ describe('ChatWithKodyFromGitUseCase — replies without @kody (#1946)', () => {
             expect(conversationAgentUseCase.execute).not.toHaveBeenCalled();
         });
 
+        it('stays quiet without calling the classifier on unambiguous closure notes', async () => {
+            const reply = githubReply(900, 'Fixed in `cb01ad78`.', 'dev-one', 1);
+            const { useCase, conversationAgentUseCase, codeManagementService } =
+                setup([githubKodyRoot, reply]);
+
+            await useCase.execute(githubParams(reply));
+
+            expect(classify).not.toHaveBeenCalled();
+            expect(conversationAgentUseCase.execute).not.toHaveBeenCalled();
+            expect(
+                codeManagementService.createResponseToComment,
+            ).not.toHaveBeenCalled();
+        });
+
+        it('passes closure prefixes with follow-up prose to the classifier', async () => {
+            classify.mockResolvedValue(true);
+            const reply = githubReply(
+                900,
+                'Fixed in abc1234. Recheck it now.',
+                'dev-one',
+                1,
+            );
+            const { useCase, conversationAgentUseCase } = setup([
+                githubKodyRoot,
+                reply,
+            ]);
+
+            await useCase.execute(githubParams(reply));
+
+            expect(classify).toHaveBeenCalled();
+            expect(conversationAgentUseCase.execute).toHaveBeenCalled();
+        });
+
+        it('stays quiet without calling the classifier when GitHub reports the thread resolved', async () => {
+            const reply = githubReply(900, 'why?', 'dev-one', 1);
+            const { useCase, conversationAgentUseCase, codeManagementService } =
+                setup([githubKodyRoot, reply]);
+            (codeManagementService as any).getPullRequestReviewThreads = jest
+                .fn()
+                .mockResolvedValue([
+                    {
+                        id: 'PRRC_root',
+                        threadId: 'PRRT_1',
+                        fullDatabaseId: '555',
+                        isResolved: true,
+                    },
+                ]);
+
+            await useCase.execute(githubParams(reply));
+
+            expect(
+                (codeManagementService as any).getPullRequestReviewThreads,
+            ).toHaveBeenCalled();
+            expect(classify).not.toHaveBeenCalled();
+            expect(conversationAgentUseCase.execute).not.toHaveBeenCalled();
+        });
+
+        it('continues to the classifier when GitHub reports the thread unresolved', async () => {
+            classify.mockResolvedValue(true);
+            const reply = githubReply(900, 'why?', 'dev-one', 1);
+            const { useCase, conversationAgentUseCase, codeManagementService } =
+                setup([githubKodyRoot, reply]);
+            (codeManagementService as any).getPullRequestReviewThreads = jest
+                .fn()
+                .mockResolvedValue([
+                    {
+                        id: 'PRRC_root',
+                        threadId: 'PRRT_1',
+                        fullDatabaseId: '555',
+                        isResolved: false,
+                    },
+                ]);
+
+            await useCase.execute(githubParams(reply));
+
+            expect(classify).toHaveBeenCalled();
+            expect(conversationAgentUseCase.execute).toHaveBeenCalled();
+        });
+
         it('classifies on the conversation task slot', async () => {
             classify.mockResolvedValue(false);
             const reply = githubReply(900, 'why?', 'dev-one', 1);
@@ -424,7 +503,7 @@ describe('ChatWithKodyFromGitUseCase — replies without @kody (#1946)', () => {
             setup([
                 {
                     id: 32,
-                    body: 'fixed in the last push',
+                    body: 'can you explain how it releases early?',
                     createdAt: at(2),
                     parent: { id: 31 },
                     author: { name: 'Bob', username: 'bob' },
@@ -456,7 +535,7 @@ describe('ChatWithKodyFromGitUseCase — replies without @kody (#1946)', () => {
                 pullrequest: { id: 7 },
                 comment: {
                     id: 32,
-                    content: { raw: 'fixed in the last push' },
+                    content: { raw: 'can you explain how it releases early?' },
                     parent: { id: 31 },
                 },
                 actor: { display_name: 'Bob', uuid: '{u-2}' },
